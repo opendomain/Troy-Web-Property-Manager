@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>aspnet-Troy_Web_Property_Manager-62b8860c-ca47-4838-9d74-4c1f8862b1a0</UserSecretsId>
+    <UserSecretsId>Troy_Web_Property_Manager_DB</UserSecretsId>
     <RootNamespace>Troy_Web_Property_Manager</RootNamespace>
   </PropertyGroup>
 
