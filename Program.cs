@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using SendGrid.Helpers.Mail;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Services;
 
@@ -50,7 +53,33 @@ namespace Troy_Web_Property_Manager
             app.MapRazorPages()
                .WithStaticAssets();
 
+            // Ensure the database is created and apply any pending migrations
+            CreateDatabase(app);
+
             app.Run();
+        }
+
+  
+        private static void CreateDatabase(WebApplication app)
+        {
+            // NOTE: use this method instead of "dotnet ef database update" command
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                // Applies any pending migrations and creates the database if it doesn't exist
+                // dbContext.Database.Migrate();
+                dbContext.Database.EnsureCreated();
+
+                // TODO: Use Bogus?
+                SeedData(dbContext);
+            }
+        }
+
+        private static void SeedData(ApplicationDbContext dbContext)
+        {
+            //throw new NotImplementedException();
         }
     }
 }
