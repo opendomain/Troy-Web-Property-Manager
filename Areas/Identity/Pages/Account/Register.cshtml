@@ -1,5 +1,6 @@
 @page
 @model Troy_Web_Property_Manager.Areas.Identity.Pages.Account.RegisterModel
+@using Troy_Web_Property_Manager.Models
 @{
     ViewData["Title"] = "Register";
 }
@@ -23,6 +24,18 @@
         <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" />
         <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
     </div>
+    <fieldset class="form-group mt-2">
+        <legend class="col-form-label pt-0">@Html.DisplayNameFor(m => m.Input.Role)</legend>
+        @foreach (var role in AppRoles.All)
+        {
+            var id = "role-" + role.Replace(" ", "");
+            <div class="form-check">
+                <input asp-for="Input.Role" type="radio" value="@role" id="@id" class="form-check-input" />
+                <label for="@id" class="form-check-label">@role</label>
+            </div>
+        }
+        <span asp-validation-for="Input.Role" class="text-danger"></span>
+    </fieldset>
     <button type="submit" class="btn btn-primary">Register</button>
 </form>
 
