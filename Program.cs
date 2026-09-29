@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
@@ -7,6 +8,7 @@ using SendGrid.Helpers.Mail;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Model;
 
 namespace Troy_Web_Property_Manager
 {
@@ -31,6 +33,16 @@ namespace Troy_Web_Property_Manager
 
             builder.Services.AddRazorPages();
 
+            builder.Services.AddControllersWithViews(options =>
+            {
+                // Validate antiforgery tokens on every MVC POST (Razor Pages already does this).
+                options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+                // Only explicit [Required] attributes count, so display-only view-model properties never fail validation.
+                options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+            });
+            builder.Services.AddScoped<PropertyService>();
+            builder.Services.AddScoped<ApplicationService>();
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -54,6 +66,9 @@ namespace Troy_Web_Property_Manager
             app.MapStaticAssets();
             app.MapRazorPages()
                .WithStaticAssets();
+
+            // No default controller, so "/" stays the template's Razor Pages home page.
+            app.MapControllerRoute(name: "default", pattern: "{controller}/{action=Index}/{id?}");
 
             // Ensure the database is created and apply any pending migrations
             CreateDatabase(app);
