@@ -69,8 +69,8 @@ namespace Troy_Web_Property_Manager
                 var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
                 // Applies any pending migrations and creates the database if it doesn't exist
-                // dbContext.Database.Migrate();
-                dbContext.Database.EnsureCreated();
+                dbContext.Database.Migrate();
+                //dbContext.Database.EnsureCreated();
 
                 // TODO: Use Bogus?
                 SeedData(dbContext);
