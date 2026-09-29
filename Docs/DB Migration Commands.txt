@@ -1,0 +1,3 @@
+Scaffold-DbContext name="" Microsoft.EntityFrameworkCore.SqlServer -Context "ApplicationDbContext" -Force -OutputDir Models
+
+Add-Migration UpdateModelsFromDb -Context ApplicationDbContext
