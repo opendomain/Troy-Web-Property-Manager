@@ -1,0 +1,33 @@
+@page
+@model Troy_Web_Property_Manager.Areas.Identity.Pages.Account.Manage.IndexModel
+@{
+    ViewData["Title"] = "Profile";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    var alertClass = Model.StatusMessage.StartsWith("Unexpected error") ? "alert-danger" : "alert-success";
+    <div class="alert @alertClass" role="alert">@Model.StatusMessage</div>
+}
+
+<form method="post">
+    <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+    <div class="form-group">
+        <label for="username">Username</label>
+        <input id="username" value="@Model.Username" class="form-control" disabled />
+    </div>
+    <div class="form-group">
+        <label asp-for="Input.PhoneNumber"></label>
+        <input asp-for="Input.PhoneNumber" class="form-control" autocomplete="tel" />
+        <span asp-validation-for="Input.PhoneNumber" class="text-danger"></span>
+    </div>
+    <button type="submit" class="btn btn-primary mt-2">Save</button>
+</form>
+
+<p class="mt-3"><a class="btn btn-outline-secondary" asp-page="./ChangePassword">Change your password</a></p>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
