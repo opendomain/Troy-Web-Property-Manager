@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using SendGrid.Helpers.Mail;
 using Troy_Web_Property_Manager.Data;
+using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager
@@ -22,6 +23,7 @@ namespace Troy_Web_Property_Manager
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
             builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
+                .AddRoles<IdentityRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
 
             builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
@@ -72,8 +74,29 @@ namespace Troy_Web_Property_Manager
                 dbContext.Database.Migrate();
                 //dbContext.Database.EnsureCreated();
 
+                AddRequiredDataToDatabase(scope);
                 // TODO: Use Bogus?
                 SeedData(dbContext);
+            }
+        }
+
+        private static void AddRequiredDataToDatabase(IServiceScope scope)
+        {
+            // Add required data to the database
+            // Example: Add default roles, users, or any other necessary data
+            // This method can be customized to add specific data to the database as needed
+
+            SeedRoles(scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>());
+        }
+
+        private static void SeedRoles(RoleManager<IdentityRole> roleManager)
+        {
+            foreach (var role in AppRoles.All)
+            {
+                if (!roleManager.RoleExistsAsync(role).GetAwaiter().GetResult())
+                {
+                    roleManager.CreateAsync(new IdentityRole(role)).GetAwaiter().GetResult();
+                }
             }
         }
 

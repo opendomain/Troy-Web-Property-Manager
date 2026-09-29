@@ -1,0 +1,19 @@
+@page
+@model Troy_Web_Property_Manager.Areas.Identity.Pages.Account.LogoutModel
+@{
+    ViewData["Title"] = "Log out";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (User.Identity?.IsAuthenticated == true)
+{
+    <form method="post" asp-route-returnUrl="@Url.Page("/Index", new { area = "" })">
+        <p>Are you sure you want to log out?</p>
+        <button type="submit" class="btn btn-primary">Log out</button>
+    </form>
+}
+else
+{
+    <p>You have successfully logged out of the application.</p>
+}
