@@ -60,17 +60,19 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>
-        /// Units with no lease covering today, optionally just for one property and/or a minimum number of bedrooms
-        /// (all filtered in SQL). We never store "available" - a stored flag would be wrong the day a lease ends (2.d).
+        /// Units with no lease covering today, optionally just for one property and/or a minimum number of bedrooms,
+        /// sorted by <paramref name="sort"/> (all in SQL). We never store "available" - a stored flag would be wrong the
+        /// day a lease ends (2.d).
         /// </summary>
-        public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync(int? propertyId = null, int? minBedrooms = null)
+        public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync(int? propertyId = null, int? minBedrooms = null,
+            UnitSortColumn sort = UnitSortColumn.Property, SortDirection dir = SortDirection.Asc)
         {
             var leasedToday = LeaseRules.ActiveOn(_clock.Today);
-            return db.Units.AsNoTracking()
+            var units = db.Units.AsNoTracking()
             .Where(u => !u.Leases.AsQueryable().Any(leasedToday))
             .Where(u => propertyId == null || u.PropertyId == propertyId)
-            .Where(u => minBedrooms == null || u.Bedrooms >= minBedrooms)
-            .OrderBy(u => u.Property.Name).ThenBy(u => u.UnitNumber)
+            .Where(u => minBedrooms == null || u.Bedrooms >= minBedrooms);
+            return SortUnits(units, sort, dir == SortDirection.Desc)
             .Select(u => new AvailableUnitViewModel
             {
                 Id = u.Id,
@@ -80,6 +82,26 @@ namespace Troy_Web_Property_Manager.Services
                 MonthlyRent = u.MonthlyRent,
                 UnitTypeName = u.UnitType.Name
             }).ToListAsync();
+        }
+
+        /// <summary>
+        /// The ORDER BY for available units. Ties (say, every 2-bedroom unit) fall back to property name, unit number
+        /// and id, always ascending, so the order within a tie is the page's normal reading order and never changes
+        /// between loads.
+        /// </summary>
+        private static IOrderedQueryable<Unit> SortUnits(IQueryable<Unit> units, UnitSortColumn sort, bool descending)
+        {
+            var sorted = sort switch
+            {
+                UnitSortColumn.Bedrooms => descending ? units.OrderByDescending(u => u.Bedrooms) : units.OrderBy(u => u.Bedrooms),
+                UnitSortColumn.Rent => descending ? units.OrderByDescending(u => u.MonthlyRent) : units.OrderBy(u => u.MonthlyRent),
+                UnitSortColumn.Type => descending ? units.OrderByDescending(u => u.UnitType.Name) : units.OrderBy(u => u.UnitType.Name),
+                // The default: by property, then unit number, both in the chosen direction.
+                _ => descending
+                    ? units.OrderByDescending(u => u.Property.Name).ThenByDescending(u => u.UnitNumber)
+                    : units.OrderBy(u => u.Property.Name).ThenBy(u => u.UnitNumber)
+            };
+            return sorted.ThenBy(u => u.Property.Name).ThenBy(u => u.UnitNumber).ThenBy(u => u.Id);
         }
 
         public Task<PropertyFormViewModel?> GetPropertyFormAsync(int id)
