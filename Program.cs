@@ -57,6 +57,7 @@ namespace Troy_Web_Property_Manager
 
             app.UseRouting();
 
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.MapStaticAssets();
