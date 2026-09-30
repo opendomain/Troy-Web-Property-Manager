@@ -2,6 +2,8 @@
 using Microsoft.Extensions.Options;
 using SendGrid;
 using SendGrid.Helpers.Mail;
+using System.IO;
+using System.Net.Http; // add this
 
 namespace Troy_Web_Property_Manager.Services
 {
@@ -54,13 +56,25 @@ namespace Troy_Web_Property_Manager.Services
             };
             msg.AddTo(new EmailAddress(email));
 
+            // Validate configured from address so SendGrid doesn't throw with an unclear error.
+            if (string.IsNullOrWhiteSpace(_options.FromEmail))
+            {
+                _logger.LogError("SendGrid:FromEmail is not configured.");
+                throw new InvalidOperationException("SendGrid:FromEmail is not configured.");
+            }
+
             // Turn off click tracking - SendGrid rewrites the links and that can break the confirmation token.
             msg.SetClickTracking(false, false);
 
             var response = await _client.SendEmailAsync(msg);
             if (!response.IsSuccessStatusCode)
             {
-                var body = await response.Body.ReadAsStringAsync();
+                string body = "";
+                if (response.Body != null)
+                {
+                    // Response.Body is HttpContent; read it as a string.
+                    body = await response.Body.ReadAsStringAsync();
+                }
                 _logger.LogError("SendGrid failed to send to {Email}: {Status} {Body}", email, response.StatusCode, body);
                 throw new InvalidOperationException("Failed to send email.");
             }
