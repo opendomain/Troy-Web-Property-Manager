@@ -63,7 +63,7 @@ namespace Troy_Web_Property_Manager.Controllers
         public async Task<IActionResult> Start(int unitId)
         {
             var result = await applications.StartAsync(unitId, CurrentUser);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (!result.Succeeded)
             {
                 // e.g. someone leased the unit after the page loaded - send them back to the list and say why.
@@ -122,7 +122,7 @@ namespace Troy_Web_Property_Manager.Controllers
                     }
                     else return BadRequest(); // there's no Continue on the Summary, so someone's crafting posts
 
-                    if (result.NotFound) return NotFound();
+                    if (IsAccessFailure(result)) return Failure(result);
                     if (result.Succeeded) return RedirectToAction(nameof(Edit), new { id, section = ApplicationWorkflow.Next(model.Section) });
 
                     // Errors from the service (e.g. "no longer editable", someone else changed it) show on the same section.
@@ -132,7 +132,7 @@ namespace Troy_Web_Property_Manager.Controllers
                 case "submit":
                     // 4.b.ii / 4.e: the service makes sure both sections are saved and the unit isn't already leased.
                     var submitted = await applications.SubmitAsync(id, CurrentUser);
-                    if (submitted.NotFound) return NotFound();
+                    if (IsAccessFailure(submitted)) return Failure(submitted);
                     if (submitted.Succeeded)
                     {
                         SetMessage("Your application was submitted.");
@@ -224,7 +224,7 @@ namespace Troy_Web_Property_Manager.Controllers
             if (!ModelState.IsValid) return ModalInvalid("_ResidenceForm", model);
 
             var result = await applications.SaveResidenceAsync(id, model, CurrentUser);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
             AddErrors(result);
             return ModalInvalid("_ResidenceForm", model);
@@ -246,7 +246,7 @@ namespace Troy_Web_Property_Manager.Controllers
         public async Task<IActionResult> DeleteResidenceConfirmed(int id, int residenceId)
         {
             var result = await applications.DeleteResidenceAsync(id, residenceId, CurrentUser);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
             AddErrors(result);
             return ModalInvalid("_Confirm", ConfirmDeleteResidence(id, residenceId));
@@ -271,7 +271,7 @@ namespace Troy_Web_Property_Manager.Controllers
         public async Task<IActionResult> WithdrawConfirmed(int id)
         {
             var result = await applications.WithdrawAsync(id, CurrentUser);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded)
             {
                 SetMessage("Your application was withdrawn.");
@@ -302,7 +302,7 @@ namespace Troy_Web_Property_Manager.Controllers
             if (!ModelState.IsValid) return ModalInvalid("_ReviewForm", model); // e.g. Deny without a comment
 
             var result = await applications.ReviewAsync(id, model, CurrentUser);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded)
             {
                 SetMessage(model.Outcome switch

@@ -174,7 +174,9 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task Start_ByManager_IsRejected()
         {
-            AssertError(await Service().StartAsync(_db.UnitId, ManagerUser), "Only applicants");
+            var result = await Service().StartAsync(_db.UnitId, ManagerUser);
+            AssertError(result, "Only applicants");
+            Assert.True(result.Forbidden);
         }
 
         [Fact]
@@ -379,6 +381,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Approved)).WithdrawAsync(id, ApplicantUser);
 
             AssertError(result, "changed by someone else");
+            Assert.True(result.Conflict);
             var application = await LoadAsync(id);
             Assert.Equal((long)ApplicationStatus.Approved, application.Status);
             Assert.DoesNotContain(application.ApplicationStatusHistories, h => h.NewStatus == (long)ApplicationStatus.Withdrawn);
@@ -471,7 +474,9 @@ namespace Troy_Web_Property_Manager.Tests.Services
         public async Task Review_ByApplicant_IsRejected()
         {
             var id = await SubmittedAsync();
-            AssertError(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ApplicantUser), "Only property managers");
+            var result = await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ApplicantUser);
+            AssertError(result, "Only property managers");
+            Assert.True(result.Forbidden);
         }
 
         [Fact]
@@ -503,6 +508,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
                 .ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser);
 
             AssertError(result, "changed by someone else");
+            Assert.True(result.Conflict);
             Assert.Equal(0, await _db.CreateContext().Leases.CountAsync());
         }
 

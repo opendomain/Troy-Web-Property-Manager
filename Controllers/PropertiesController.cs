@@ -42,7 +42,7 @@ namespace Troy_Web_Property_Manager.Controllers
             // Didn't validate - send the partial back with the errors (422) and the modal stays open.
             if (!ModelState.IsValid) return ModalInvalid("_PropertyForm", model);
             var result = await properties.SavePropertyAsync(model);
-            return result.NotFound ? NotFound() : RefreshList();
+            return IsAccessFailure(result) ? Failure(result) : RefreshList();
         }
 
         public IActionResult Delete(int id)
@@ -54,7 +54,7 @@ namespace Troy_Web_Property_Manager.Controllers
         {
             // The service won't delete it if any unit has applications (we keep those), and the modal says why.
             var result = await properties.DeletePropertyAsync(id);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return RefreshList();
             AddErrors(result);
             return ModalInvalid("_Confirm", ConfirmDelete(id));
@@ -80,7 +80,7 @@ namespace Troy_Web_Property_Manager.Controllers
                 // The service handles the rules that need the database: unit numbers are unique per property, and
                 // you can't pick an inactive type (2.c says to enforce that on the server).
                 var result = await properties.SaveUnitAsync(model);
-                if (result.NotFound) return NotFound();
+                if (IsAccessFailure(result)) return Failure(result);
                 if (result.Succeeded) return RefreshList();
                 AddErrors(result);
             }
@@ -100,7 +100,7 @@ namespace Troy_Web_Property_Manager.Controllers
         public async Task<IActionResult> DeleteUnitConfirmed(int id)
         {
             var result = await properties.DeleteUnitAsync(id);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return RefreshList();
             AddErrors(result);
             return ModalInvalid("_Confirm", ConfirmDeleteUnit(id));

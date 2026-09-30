@@ -62,7 +62,7 @@ namespace Troy_Web_Property_Manager.Services
             catch (DbUpdateConcurrencyException)
             {
                 db.ChangeTracker.Clear();
-                return ServiceResult.Error("This application was changed by someone else. Reload the page and try again.");
+                return ServiceResult.Stale();
             }
         }
 
@@ -95,7 +95,7 @@ namespace Troy_Web_Property_Manager.Services
 
         private async Task<ServiceResult> StartOnceAsync(int unitId, CurrentUser user)
         {
-            if (user.IsManager) return ServiceResult.Error("Only applicants can apply for a unit.");
+            if (user.IsManager) return ServiceResult.Forbid("Only applicants can apply for a unit.");
             if (!await db.Units.AnyAsync(u => u.Id == unitId)) return ServiceResult.Missing();
 
             // Already applied for this unit? Reopen that one instead of making a duplicate.
@@ -373,7 +373,7 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         public async Task<ServiceResult> ReviewAsync(int id, ReviewViewModel model, CurrentUser user)
         {
-            if (!user.IsManager) return ServiceResult.Error("Only property managers can review applications.");
+            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can review applications.");
 
             try
             {
@@ -383,13 +383,13 @@ namespace Troy_Web_Property_Manager.Services
             {
                 // Another review on the same unit or application got there first, and this one was rolled back.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Error("Another review of this unit was saved at the same time. Reload the page and try again.");
+                return ServiceResult.Stale("Another review of this unit was saved at the same time. Reload the page and try again.");
             }
             catch (DbUpdateConcurrencyException)
             {
                 // The status changed after we read it (e.g. the applicant withdrew), so the transaction was rolled back.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Error("This application was changed by someone else. Reload the page and try again.");
+                return ServiceResult.Stale();
             }
         }
 

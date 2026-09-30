@@ -52,6 +52,18 @@ namespace Troy_Web_Property_Manager.Controllers
             TempData["Error"] = error;
         }
 
+        /// <summary>True if the result is a 404 or 403 rather than something to show on the form.</summary>
+        protected static bool IsAccessFailure(ServiceResult result)
+        {
+            return result.NotFound || result.Forbidden;
+        }
+
+        /// <summary>Turns a not-found or forbidden result into the matching 404 / 403 response.</summary>
+        protected IActionResult Failure(ServiceResult result)
+        {
+            return result.Forbidden ? Forbid() : NotFound();
+        }
+
         /// <summary>
         /// Puts service errors into ModelState so they show up like normal validation errors.
         /// </summary>
