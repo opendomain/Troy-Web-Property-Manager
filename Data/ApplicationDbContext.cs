@@ -36,6 +36,8 @@ namespace Troy_Web_Property_Manager.Data
 
         public virtual DbSet<Lease> Leases { get; set; }
 
+        public virtual DbSet<ManagerNote> ManagerNotes { get; set; }
+
         public virtual DbSet<Property> Properties { get; set; }
 
         public virtual DbSet<RentalApplication> RentalApplications { get; set; }
@@ -145,6 +147,28 @@ namespace Troy_Web_Property_Manager.Data
                     .HasForeignKey(d => d.UnitId)
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("FK_Lease_Unit");
+            });
+
+            // Property managers' private notes on an application, one row per application. There's no navigation
+            // from RentalApplication to here (WithOne() with no argument), so applicant-facing queries can't reach
+            // the notes even by accident.
+            modelBuilder.Entity<ManagerNote>(entity =>
+            {
+                entity.ToTable("ManagerNote");
+
+                entity.HasKey(e => e.RentalApplicationId);
+                entity.Property(e => e.RentalApplicationId).HasColumnName("RentalApplicationID").ValueGeneratedNever();
+                entity.Property(e => e.Notes).HasMaxLength(2000);
+                entity.Property(e => e.UpdatedByUser).HasMaxLength(450);
+                entity.Property(e => e.UpdatedDate).HasColumnType("datetime");
+
+                // Set to a new Guid on every save, so two managers editing at once can't overwrite each other.
+                entity.Property(e => e.Version).IsConcurrencyToken();
+
+                entity.HasOne(d => d.RentalApplication).WithOne()
+                    .HasForeignKey<ManagerNote>(d => d.RentalApplicationId)
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .HasConstraintName("FK_ManagerNote_RentalApplications");
             });
 
             modelBuilder.Entity<Property>(entity =>

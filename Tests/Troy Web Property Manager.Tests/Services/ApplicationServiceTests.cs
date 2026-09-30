@@ -553,6 +553,132 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Equal(0, await _db.CreateContext().Leases.CountAsync());
         }
 
+        // ---------------- Manager notes ----------------
+
+        private const string SecretNote = "PRIVATE-MANAGER-NOTE-7f3a";
+
+        private static ManagerNotesViewModel Notes(string? notes, Guid? version = null)
+        {
+            return new() { Notes = notes, Version = version };
+        }
+
+        [Fact]
+        public async Task ManagerNotes_ManagerCanSaveAndReadThem()
+        {
+            var id = await SubmittedAsync();
+            Assert.Null((await Service().GetManagerNotesAsync(id, ManagerUser))!.Notes);
+
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("  Called the landlord.\nGood reference.  "), ManagerUser));
+
+            var notes = await Service().GetManagerNotesAsync(id, ManagerUser);
+            Assert.NotNull(notes);
+            Assert.Equal("Called the landlord.\nGood reference.", notes.Notes);
+            Assert.Equal($"{ManagerUser.Id}@example.com", notes.UpdatedBy);
+            Assert.NotNull(notes.Version);
+            Assert.NotNull(notes.UpdatedAt);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_SecondSaveWithCurrentVersion_Works()
+        {
+            var id = await SubmittedAsync();
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("First."), ManagerUser));
+            var version = (await Service().GetManagerNotesAsync(id, ManagerUser))!.Version;
+
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("Second.", version), ManagerUser));
+
+            Assert.Equal("Second.", (await Service().GetManagerNotesAsync(id, ManagerUser))!.Notes);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_ApplicantCanNeitherReadNorWriteThem()
+        {
+            var id = await SubmittedAsync();
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes(SecretNote), ManagerUser));
+
+            // Even on their own application.
+            Assert.Null(await Service().GetManagerNotesAsync(id, ApplicantUser));
+            var result = await Service().SaveManagerNotesAsync(id, Notes("Overwritten"), ApplicantUser);
+            Assert.True(result.Forbidden);
+
+            Assert.Equal(SecretNote, (await _db.CreateContext().ManagerNotes.SingleAsync()).Notes);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_NeverAppearInAnythingReturnedToTheApplicant()
+        {
+            var id = await SubmittedAsync();
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes(SecretNote), ManagerUser));
+            AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Return, "Please fix your address."), ManagerUser));
+
+            // Everything the applicant-facing reads hand back, serialized so a note hiding in any property would show.
+            object?[] applicantData =
+            [
+                await Service().GetEditorAsync(id, null, ApplicantUser),
+                await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser),
+                await Service().ListAsync(null, null, ApplicantUser),
+                await Service().GetHistoryAsync(id, ApplicantUser)
+            ];
+            Assert.DoesNotContain(SecretNote, System.Text.Json.JsonSerializer.Serialize(applicantData));
+        }
+
+        [Fact]
+        public void ManagerNotes_CantBeReachedFromARentalApplication()
+        {
+            // No navigation from RentalApplication to ManagerNote, so no Include or projection over applications can
+            // pull the notes in by accident.
+            var application = _db.CreateContext().Model.FindEntityType(typeof(RentalApplication))!;
+            Assert.DoesNotContain(application.GetNavigations(), n => n.TargetEntityType.ClrType == typeof(ManagerNote));
+        }
+
+        [Fact]
+        public async Task ManagerNotes_StaleVersion_IsRejectedAndKeepsTheOtherManagersNotes()
+        {
+            var id = await SubmittedAsync();
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("First."), ManagerUser));
+            var opened = (await Service().GetManagerNotesAsync(id, ManagerUser))!.Version;
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("Another manager's edit.", opened), ManagerUser));
+
+            var result = await Service().SaveManagerNotesAsync(id, Notes("Mine.", opened), ManagerUser);
+
+            AssertError(result, "changed by someone else");
+            Assert.True(result.Conflict);
+            Assert.Equal("Another manager's edit.", (await Service().GetManagerNotesAsync(id, ManagerUser))!.Notes);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_FormOpenedBeforeFirstNote_IsRejectedOnceSomeoneAddedOne()
+        {
+            var id = await SubmittedAsync();
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("Another manager got here first."), ManagerUser));
+
+            // This form was opened when there were no notes, so it has no version.
+            var result = await Service().SaveManagerNotesAsync(id, Notes("Mine."), ManagerUser);
+
+            Assert.True(result.Conflict);
+            Assert.Equal("Another manager got here first.", (await Service().GetManagerNotesAsync(id, ManagerUser))!.Notes);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_StayEditableAfterADecision()
+        {
+            var id = await SubmittedAsync();
+            AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
+
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("Lease signed."), ManagerUser));
+        }
+
+        [Fact]
+        public async Task ManagerNotes_NotAvailableOnUnsubmittedDraftsOrMissingApplications()
+        {
+            var draft = await StartAsync();
+
+            Assert.Null(await Service().GetManagerNotesAsync(draft, ManagerUser));
+            Assert.True((await Service().SaveManagerNotesAsync(draft, Notes("x"), ManagerUser)).NotFound);
+            Assert.True((await Service().SaveManagerNotesAsync(9999, Notes("x"), ManagerUser)).NotFound);
+            Assert.Empty(_db.CreateContext().ManagerNotes);
+        }
+
         // ---------------- List and history ----------------
 
         [Fact]

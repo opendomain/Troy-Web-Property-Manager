@@ -29,3 +29,8 @@ body {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
   text-align: start;
 }
+/* Manager notes keep the line breaks the manager typed (the text itself is still HTML-encoded by Razor). */
+.manager-notes-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

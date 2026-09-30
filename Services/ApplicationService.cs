@@ -476,6 +476,95 @@ namespace Troy_Web_Property_Manager.Services
             }).ToList();
         }
 
+        // ---------------- Manager notes ----------------
+
+        /// <summary>
+        /// Property managers' private notes on an application. Returns null for applicants, and for any application
+        /// the manager can't see - the controller turns that into a 404, and the view component renders nothing.
+        /// </summary>
+        /// <remarks>
+        /// This is the only way to read <see cref="ManagerNote"/>, and the role check is here (not just on the
+        /// controller or view component), so nothing else can accidentally hand notes to an applicant.
+        /// </remarks>
+        public async Task<ManagerNotesViewModel?> GetManagerNotesAsync(int id, CurrentUser user)
+        {
+            if (!user.IsManager) return null;
+            if (!await Visible(user).AnyAsync(a => a.Id == id)) return null;
+
+            // Left join to AspNetUsers for the email of whoever saved last, same as the history panel.
+            var note = await (
+                from n in db.ManagerNotes.AsNoTracking()
+                where n.RentalApplicationId == id
+                join u in db.Users on n.UpdatedByUser equals u.Id into users
+                from u in users.DefaultIfEmpty()
+                select new { n.Notes, n.Version, n.UpdatedDate, UpdatedBy = u != null ? u.Email : null })
+                .FirstOrDefaultAsync();
+
+            return new ManagerNotesViewModel
+            {
+                ApplicationId = id,
+                Notes = note?.Notes,
+                Version = note?.Version,
+                UpdatedAt = note?.UpdatedDate,
+                UpdatedBy = note is null ? null : note.UpdatedBy ?? "(deleted user)"
+            };
+        }
+
+        /// <summary>
+        /// Saves the notes from the modal. Managers only, on any application they can see, whatever its status -
+        /// the notes are internal, so they stay editable after a decision too.
+        /// </summary>
+        /// <remarks>
+        /// Two managers can have the modal open at once. The form posts back the <see cref="ManagerNote.Version"/> it
+        /// was loaded with, and we use that as the original value of the concurrency token, so the UPDATE only matches
+        /// if nobody saved in between. If someone did, nothing is saved and the manager is told to reload.
+        /// </remarks>
+        public async Task<ServiceResult> SaveManagerNotesAsync(int id, ManagerNotesViewModel model, CurrentUser user)
+        {
+            const string changedMessage = "These notes were changed by someone else. Reload the page and try again.";
+
+            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can edit notes.");
+            if (!await Visible(user).AnyAsync(a => a.Id == id)) return ServiceResult.Missing();
+
+            var note = await db.ManagerNotes.FirstOrDefaultAsync(n => n.RentalApplicationId == id);
+            if (note is null)
+            {
+                // The form thought there were notes, but they're gone - the row is never deleted, so this is a
+                // tampered or badly out-of-date form.
+                if (model.Version is not null) return ServiceResult.Stale(changedMessage);
+                note = new ManagerNote { RentalApplicationId = id };
+                db.ManagerNotes.Add(note);
+            }
+            else
+            {
+                // Compare against the version the form was loaded with, not the one we just read. A form opened
+                // before the first note existed has no version, which never matches, so that's stale too.
+                db.Entry(note).Property(n => n.Version).OriginalValue = model.Version ?? Guid.Empty;
+            }
+
+            note.Notes = model.Notes?.Trim() ?? "";
+            note.UpdatedByUser = user.Id;
+            note.UpdatedDate = DateTime.Now;
+            note.Version = Guid.NewGuid();
+
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                db.ChangeTracker.Clear();
+                return ServiceResult.Stale(changedMessage);
+            }
+            catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
+            {
+                // Two managers added the first note at the same moment, and the primary key stopped the second one.
+                db.ChangeTracker.Clear();
+                return ServiceResult.Stale(changedMessage);
+            }
+            return ServiceResult.Ok();
+        }
+
         // ---------------- List ----------------
         /// <summary>
         /// The application list (6.a). The filters are stacked onto the IQueryable so SQL does the work - each
