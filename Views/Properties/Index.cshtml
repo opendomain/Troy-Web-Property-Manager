@@ -1,7 +1,15 @@
+@model List<PropertyViewModel>
 @{
     ViewData["Title"] = "Properties";
 }
-
-<h1>@ViewData["Title"]</h1>
-
-<p class="text-muted">Properties and units will be listed here.</p>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Properties</h1>
+    <button type="button" class="btn btn-primary" data-modal-url="@Url.Action("Edit")">Add property</button>
+</div>
+@* Refreshable region: the id matches the refreshTarget used by PropertiesController. *@
+<div id="property-list">
+    <partial name="_PropertyList" model="Model" />
+</div>
+@section Scripts {
+    <partial name="~/Pages/Shared/_ValidationScriptsPartial.cshtml" />
+}
