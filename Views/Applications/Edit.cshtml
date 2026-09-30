@@ -1,4 +1,16 @@
 @model ApplicationEditorViewModel
+@*
+    The application page (4.b) - one page, one view model, one form, one action.
+
+    - One section at a time: Model.Section decides which partial shows below. Moving between sections is just
+      another request to ApplicationsController.Edit, not a different page.
+    - ApplicationEditorViewModel is the model here, and it gets passed as-is to every section partial so they all see
+      the same data and flags (there's a longer write-up on that class).
+    - Every section sits inside the one <form> below, which posts to the Edit action. The buttons all use
+      name="command", and whichever one was clicked (back / continue / submit) decides what happens.
+    - The server decides what's editable (4.d). Model.CanEdit and Model.IsReadOnly come from the service, this view
+      just reads them, and the POST checks again - so disabled fields aren't the only thing stopping edits.
+*@
 @{
     ViewData["Title"] = $"Application #{Model.Id}";
 }
@@ -8,6 +20,8 @@
         <p>@Model.UnitLabel · Status: <strong>@Model.Status</strong></p>
     </div>
     <div>
+        @* Buttons that depend on role and status. Both open a modal filled with a partial from the controller
+           (site.js handles data-modal-url). The flags come from the server, and the actions check again anyway. *@
         @if (Model.CanWithdraw)
         {
             <button type="button" class="btn btn-outline-danger" data-modal-url="@Url.Action("Withdraw", new { id = Model.Id })">Withdraw</button>
@@ -19,6 +33,7 @@
     </div>
 </div>
 
+@* If it was returned or denied, show the applicant why so they know what to fix. *@
 @if (Model.ReviewComment is not null)
 {
     <div class="alert @(Model.Status == ApplicationStatus.Returned ? "alert-warning" : "alert-danger")" role="alert">
@@ -32,9 +47,15 @@
 
         @* One form, one action. The section shown is chosen by Model.Section. *@
         <form asp-action="Edit" asp-route-id="@Model.Id" method="post">
+            @* Lets the POST know which section the button was clicked on. It only picks what to validate and show -
+               permissions get worked out again on the server, so tampering with it gets you nothing. *@
             <input type="hidden" asp-for="Section" />
+
+            @* ModelOnly = errors that don't belong to a specific field (like "Add at least one prior residence" or
+               "can no longer be edited"). Field errors show next to their fields in the section partials. *@
             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
 
+            @* Each section has its own partial (4.b), and they all get the same view model. *@
             @switch (Model.Section)
             {
                 case ApplicationSection.ApplicantInformation:
@@ -51,6 +72,7 @@
             <div class="d-flex gap-2 mt-3">
                 @if (Model.CanEdit)
                 {
+                    @* Editors post the form - the button's value is the command. *@
                     if (Model.Section != ApplicationSection.ApplicantInformation)
                     {
                         @* formnovalidate: Back skips client-side validation because it doesn't save. *@
@@ -58,16 +80,21 @@
                     }
                     if (Model.Section != ApplicationSection.Summary)
                     {
+                        @* Continue: validate, save if it's valid, move on (4.b.i). *@
                         <button type="submit" name="command" value="continue" class="btn btn-primary">Continue</button>
                     }
                     else
                     {
+                        @* Submit only shows on the Summary and stays disabled until both sections are saved (4.b.ii).
+                           The server checks the same thing, so re-enabling it in the browser won't help. *@
                         <button type="submit" name="command" value="submit" class="btn btn-success" disabled="@(!Model.CanSubmit)">Submit</button>
                     }
                 }
                 else
                 {
                     @* Read-only viewers only navigate; nothing is posted. *@
+                    @* Plain GET links, so managers (and applicants whose application is already submitted) can flip
+                       through the sections without posting to anything they're not allowed to use. *@
                     if (Model.Section != ApplicationSection.ApplicantInformation)
                     {
                         <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Previous(Model.Section)">Back</a>
@@ -83,12 +110,16 @@
 
     @if (Model.IsManager)
     {
+        @* The status history (5.c) is a view component rather than a partial because it loads its own data (history
+           rows plus user emails) that this page's view model doesn't have. _ViewImports turns on the <vc:...> tag.
+           The component also turns away non-managers on its own, so even without this if, nothing would leak. *@
         <div class="col-lg-4">
             <vc:application-history application-id="Model.Id" />
         </div>
     }
 </div>
 
+@* jQuery Validation + unobtrusive, so the DataAnnotations errors show up before anything is posted. *@
 @section Scripts {
     <partial name="~/Pages/Shared/_ValidationScriptsPartial.cshtml" />
 }

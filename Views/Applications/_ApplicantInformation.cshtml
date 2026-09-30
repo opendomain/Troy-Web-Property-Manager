@@ -1,5 +1,18 @@
 @model ApplicationEditorViewModel
 @* Section 1. The same partial renders editable or read-only (IsReadOnly is set by the server). *@
+@*
+    Section 1, Applicant Information (4.a.i). The model is the page's ApplicationEditorViewModel (4.b), so this gets
+    used on its own for section 1 and again inside _Summary.
+
+    Read-only (4.d): a single <fieldset disabled> locks every input at once, so there's no if/else on each field and
+    the markup is the same either way. IsReadOnly is true when you can't edit (you're a manager, or it's not Draft or
+    Returned) and always on the Summary. Disabled inputs don't get posted, and the server rejects edits to locked
+    applications anyway - this is just how it looks, not the actual security.
+
+    Validation: asp-for on "ApplicantInformation.X" gives the fields the prefixed names the controller checks, plus the
+    data-val-* attributes from the DataAnnotations. So errors show in the browser before posting, and from the server
+    (asp-validation-for) after a failed Continue.
+*@
 <h4>Applicant information</h4>
 <fieldset disabled="@Model.IsReadOnly">
     <div class="row">

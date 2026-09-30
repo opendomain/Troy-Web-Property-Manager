@@ -27,6 +27,9 @@
                             <a class="nav-link text-dark" asp-area="" asp-page="/Privacy">Privacy</a>
                         </li>
 
+                        @* Menu links depend on your role. This is just about which links you see - the real access
+                           check is [Authorize(Roles = ...)] on the controllers. asp-area="" keeps the links working
+                           when the layout is rendered from the Identity area. *@
                         @if (User.IsInRole(AppRoles.PropertyManager))
                         {
                             <li class="nav-item"><a class="nav-link text-dark" asp-area="" asp-controller="Properties" asp-action="Index">Properties</a></li>
@@ -45,6 +48,8 @@
     </header>
     <div class="container">
         <main role="main" class="pb-3">
+            @* One-off success/error messages from the controllers (AppController.SetMessage/SetError). TempData
+               survives the redirect after a POST and clears once it's shown. Output with @, so it's HTML-encoded. *@
             @if (TempData["Message"] is string message)
             {
                 <div class="alert alert-success alert-dismissible fade show" role="status">
@@ -63,7 +68,9 @@
         </main>
     </div>
 
-    @* Shared modal; its content is loaded from partial views by site.js. *@
+    @* The one shared modal. Every modal in the app (property, unit, residence, review, confirm) reuses it - site.js
+       fills .modal-content with whatever partial the controller returns, so the forms are plain server-rendered
+       Razor, not JavaScript templates (Technical 1.b). *@
     <div class="modal fade" id="app-modal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content"></div>
@@ -78,6 +85,9 @@
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    @* No SPA framework (the assessment rules that out) - just Bootstrap for the modal, jQuery for unobtrusive
+       validation, and our small site.js for the modal plumbing. asp-append-version adds a hash so browsers grab
+       a new site.js as soon as it changes. *@
     <script src="~/js/site.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)

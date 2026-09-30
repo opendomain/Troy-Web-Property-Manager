@@ -1,5 +1,17 @@
 @model ApplicationEditorViewModel
 @* Section 2. Refreshable region (#residence-history); editing happens in the residence modal. *@
+@*
+    Section 2, Residence History (4.a.ii). This gets used in three places:
+      1. as section 2 on the application page,
+      2. inside _Summary (read-only),
+      3. on its own from ApplicationsController.Residences - after the residence modal saves, site.js swaps in just
+         this bit instead of reloading the whole page (Technical 1.b).
+    That's why the root element has the id the controller uses as its refresh target.
+
+    Residences are only added, edited and removed through the modal (4.c) - nothing here posts residence fields.
+    Read-only (4.d): when IsReadOnly is true the Add/Edit/Remove buttons just don't render, and the modal actions
+    return 404 on a locked application, so adding the buttons back by hand won't do anything.
+*@
 <div id="residence-history">
     <div class="d-flex justify-content-between align-items-center">
         <h4>Residence history</h4>

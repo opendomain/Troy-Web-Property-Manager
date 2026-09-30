@@ -8,7 +8,7 @@ using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager.Tests.Data
 {
-    /// <summary>The demo data must obey the same rules as data entered through the app.</summary>
+    /// <summary>The demo data has to follow the same rules as anything entered through the app.</summary>
     public sealed class DemoDataSeederTests : IDisposable
     {
         private readonly TestDatabase _db = new(withSampleData: false);
@@ -230,7 +230,7 @@ namespace Troy_Web_Property_Manager.Tests.Data
                     .SelectMany(a => new[] { a.ApplicantInformation!.Name, a.ApplicantInformation.Phone, a.ApplicantInformation.Email, a.ApplicantInformation.CurrentAddress }))
                 .Concat(applications.SelectMany(a => a.Residences).SelectMany(r => new[] { r.Address, r.LandlordName, r.LandlordPhone }));
 
-            // SQLite doesn't enforce nvarchar(50), so check it here; SQL Server would reject longer values.
+            // SQLite doesn't care about nvarchar(50), so check it here - SQL Server would reject anything longer.
             Assert.All(values, v => Assert.InRange(v.Length, 1, 50));
         }
 

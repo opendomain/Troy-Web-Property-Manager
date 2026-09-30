@@ -12,6 +12,10 @@ using Troy_Web_Property_Manager.Models;
 
 namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
 {
+    /// <summary>
+    /// Sign-up page scaffolded from the Identity UI, with a role picker added.
+    /// We don't trust the posted role - it has to be in <see cref="AppRoles.All"/>.
+    /// </summary>
     [AllowAnonymous]
     public class RegisterModel : PageModel
     {
@@ -55,6 +59,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
             [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
             public string ConfirmPassword { get; set; } = "";
 
+            /// <summary>"Applicant" or "Property Manager" - shown as radio buttons (1.a.i).</summary>
             [Required(ErrorMessage = "Please select a role.")]
             [Display(Name = "I am a")]
             public string Role { get; set; } = "";
@@ -70,6 +75,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
             returnUrl ??= Url.Content("~/");
             ReturnUrl = returnUrl;
 
+            // Only accept one of our two roles, no matter what the form sent.
             if (!AppRoles.All.Contains(Input.Role))
             {
                 ModelState.AddModelError(nameof(Input) + "." + nameof(Input.Role), "Please select a valid role.");
@@ -81,6 +87,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
                 var result = await _userManager.CreateAsync(user, Input.Password);
                 if (result.Succeeded)
                 {
+                    // Give them the role straight away - the controllers' [Authorize(Roles = ...)] depends on it.
                     result = await _userManager.AddToRoleAsync(user, Input.Role);
                     if (!result.Succeeded)
                     {

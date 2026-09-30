@@ -1,7 +1,15 @@
 @model ConfirmViewModel
 
-@* data-modal-form: site.js posts this with fetch, then closes the modal and refreshes on success. *@
+@* data-modal-form: site.js posts this with fetch, and if it works, closes the modal and refreshes. *@
+@*
+    The one "are you sure?" dialog for everything destructive (removing a property, unit or residence, and withdrawing).
+    Controllers pass in a ConfirmViewModel with the wording and the URL to post to, so there's only one dialog to look
+    after. If the action gets refused (e.g. "this unit has applications"), the controller sends this back with a 422
+    and the reason shows in the validation summary, with the modal still open.
+*@
 <form action="@Model.Action" method="post" data-modal-form>
+    @* A plain action="" (instead of asp-action) doesn't get the token automatically, so we add it by hand -
+       otherwise the global antiforgery filter would reject the post. *@
     @Html.AntiForgeryToken()
     <div class="modal-header">
         <h5 class="modal-title">@Model.Title</h5>

@@ -2,16 +2,23 @@ using Microsoft.Data.SqlClient;
 
 namespace Troy_Web_Property_Manager.Services
 {
-    /// <summary>Recognizes SQL Server errors the services handle. EF may wrap them in a DbUpdateException.</summary>
+    /// <summary>
+    /// Spots the SQL Server errors our services know how to deal with. EF might wrap them in a DbUpdateException.
+    /// </summary>
+    /// <remarks>
+    /// A few rules are really enforced by the database (unique indexes, serializable transactions) because a
+    /// check-then-write in code can lose a race to another request. When the database stops that, these helpers let
+    /// the service recognize the error and show a friendly message or retry. Anything else still blows up normally.
+    /// </remarks>
     internal static class SqlErrors
     {
-        /// <summary>Error 1205: chosen as the deadlock victim.</summary>
+        /// <summary>Error 1205: we lost a deadlock.</summary>
         public static bool IsDeadlock(Exception ex)
         {
             return HasNumber(ex, 1205);
         }
 
-        /// <summary>Errors 2601/2627: a unique index or unique constraint was violated.</summary>
+        /// <summary>Errors 2601/2627: hit a unique index or unique constraint.</summary>
         public static bool IsUniqueViolation(Exception ex)
         {
             return HasNumber(ex, 2601, 2627);

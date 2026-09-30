@@ -1,5 +1,10 @@
 @model List<PropertyViewModel>
-@* Contents of the #property-list region in Index.cshtml; the modal script swaps this in after a save. *@
+@* What goes inside #property-list in Index.cshtml. site.js swaps this in after a save. *@
+@*
+    One card per property, with its units. Index.cshtml renders it on first load, and PropertiesController.List
+    returns it on its own so a modal save can refresh just this bit. Using the same partial for both means the
+    refreshed version always looks exactly like the original.
+*@
 @foreach (var property in Model)
 {
     <div class="card mb-3">
@@ -21,8 +26,9 @@
                         <td>@unit.UnitNumber</td>
                         <td>@unit.Bedrooms</td>
                         <td>@unit.MonthlyRent.ToString("C0")</td>
-                        @* An inactive type still displays on the unit that uses it. *@
+                        @* Inactive types still show on units that already have them. *@
                         <td>@unit.UnitTypeName @(unit.UnitTypeIsActive ? "" : "(inactive)")</td>
+                        @* Worked out in SQL from today's lease dates (2.d) - not a stored flag. *@
                         <td>@(unit.IsLeased ? "Leased" : "Available")</td>
                         <td class="text-end">
                             <button type="button" class="btn btn-sm btn-link" data-modal-url="@Url.Action("EditUnit", "Properties", new { id = unit.Id })">Edit</button>

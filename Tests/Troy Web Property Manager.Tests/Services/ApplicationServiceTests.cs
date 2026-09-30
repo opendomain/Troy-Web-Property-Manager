@@ -19,7 +19,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
 
         // ---------------- Helpers ----------------
 
-        /// <summary>A service on a fresh context, as each web request would get.</summary>
+        /// <summary>A service on a fresh context, same as each web request would get.</summary>
         private ApplicationService Service(params IInterceptor[] interceptors)
         {
             return new(_db.CreateContext(interceptors));
@@ -107,7 +107,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
                 .SingleAsync(a => a.Id == id);
         }
 
-        /// <summary>Simulates another request changing the status after the service loaded the application, just before it saves.</summary>
+        /// <summary>Fakes another request changing the status after the service loaded the application but before it saves.</summary>
         private sealed class ChangeStatusBeforeSave(int applicationId, ApplicationStatus status) : SaveChangesInterceptor
         {
             public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(

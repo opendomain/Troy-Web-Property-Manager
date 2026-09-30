@@ -2,14 +2,22 @@
 @{
     ViewData["Title"] = "Properties";
 }
+@*
+    The manager's Properties page (2.b). All the adding, editing and removing happens in modals (Technical 1.b):
+    a button with data-modal-url tells site.js to fetch that URL, which returns a partial (_PropertyForm, _UnitForm
+    or the shared _Confirm), and it gets shown in the shared modal from _Layout.
+*@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1>Properties</h1>
     <button type="button" class="btn btn-primary" data-modal-url="@Url.Action("Edit")">Add property</button>
 </div>
-@* Refreshable region: the id matches the refreshTarget used by PropertiesController. *@
+@* This gets refreshed after saves - the id has to match PropertiesController's refreshTarget. *@
+@* When a modal saves, just this part gets swapped for a fresh _PropertyList from PropertiesController.List,
+   so the page doesn't reload (Technical 1.b). *@
 <div id="property-list">
     <partial name="_PropertyList" model="Model" />
 </div>
+@* Loaded once here. site.js re-parses each form it puts in the modal so browser-side validation works there too. *@
 @section Scripts {
     <partial name="~/Pages/Shared/_ValidationScriptsPartial.cshtml" />
 }

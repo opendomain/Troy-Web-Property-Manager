@@ -6,6 +6,24 @@
 //     * JSON response  -> { success, refreshTarget, refreshUrl }: close the modal, then reload
 //                         refreshTarget from refreshUrl, or the whole page when no target is given.
 // - Buttons with data-confirm ask before submitting.
+//
+// This is here for Technical 1.b: load modals from partial views the controllers return. If the form doesn't
+// validate, send back the same partial with the errors so the modal redraws in place; if it works, close the modal
+// and refresh just the part of the page that changed.
+//
+// A few notes on how it's put together:
+// - It's all server-rendered HTML, no SPA framework (the assessment doesn't allow one). The forms are normal Razor
+//   partials with tag helpers, so validation attributes, antiforgery tokens and labels all come from the server.
+//   All this script does is move HTML in and out of the shared modal in _Layout.cshtml.
+// - Every modal works the same way, driven by data- attributes, so a new modal doesn't need any new JavaScript:
+//     data-modal-url="..." on a button     -> GET that URL and show the partial in the modal
+//     data-modal-form on a <form>           -> post it with fetch and deal with the response (below)
+// - The status code tells us what happened: JSON = worked, 422 + HTML = same partial with errors,
+//   401/403 = auth problem, anything else = something went wrong. See AppController.ModalSuccess / ModalInvalid.
+// - We post the form as FormData, which includes the hidden antiforgery token, so the server's global filter checks
+//   these like any other post. Server HTML goes in as-is since it's our own (already encoded) Razor output; any
+//   error text we build here uses textContent.
+// - It's all inside an IIFE with 'use strict' so nothing leaks into the global scope.
 (() => {
     'use strict';
 
@@ -16,6 +34,8 @@
 
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     const content = modalEl.querySelector('.modal-content');
+    // This header flags the request as AJAX, so ASP.NET Core's cookie auth sends back a 401/403 instead of
+    // redirecting to the login page. handleAuthFailure depends on that.
     const ajaxHeaders = { 'X-Requested-With': 'XMLHttpRequest' };
 
     function errorHtml(message) {
@@ -30,7 +50,7 @@
             '<div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>';
     }
 
-    // Unobtrusive validation only scans the page on load, so newly inserted forms must be parsed.
+    // Unobtrusive validation only scans the page once on load, so we have to parse any form we add later.
     function parseValidation() {
         const $ = window.jQuery;
         if (!$ || !$.validator || !$.validator.unobtrusive) {
@@ -58,9 +78,9 @@
         }
     }
 
-    // For AJAX requests the cookie auth handler returns 401 (signed out) or 403 (wrong role) instead of
-    // redirecting. A signed-out user gets a full page load so they land on the login page with a return URL,
-    // rather than seeing the login page inside the modal. Returns true when the response was handled here.
+    // On AJAX requests the cookie auth handler returns 401 (signed out) or 403 (wrong role) instead of redirecting.
+    // If they're signed out we do a full page load so they end up on the real login page with a return URL, not a
+    // login page stuck inside the modal. Returns true if we dealt with it here.
     function handleAuthFailure(response) {
         if (response.status === 401 || response.redirected) {
             window.location.reload();
@@ -85,6 +105,8 @@
         }
     }
 
+    // The happy path: close the modal and refresh whatever changed. The server tells us which region (a CSS selector)
+    // and the URL of a partial to redraw it, so only that part of the page updates.
     async function refresh(result) {
         const target = result.refreshTarget && document.querySelector(result.refreshTarget);
         if (!target || !result.refreshUrl) {
@@ -93,8 +115,8 @@
         }
         const response = await fetch(result.refreshUrl, { headers: ajaxHeaders });
         if (response.ok && !response.redirected) {
-            // A partial whose root element is the target itself (e.g. _ResidenceHistory) replaces it;
-            // otherwise the partial is the target's contents (e.g. _PropertyList).
+            // If the partial's root element is the target itself (like _ResidenceHistory), swap the whole thing;
+            // otherwise it's just the inside of the target (like _PropertyList).
             const template = document.createElement('template');
             template.innerHTML = (await response.text()).trim();
             const root = template.content.firstElementChild;
@@ -124,6 +146,8 @@
         }
     });
 
+    // Posts modal forms with fetch. We listen on the modal content (event delegation), so forms added later -
+    // including one that got redrawn with errors - just work without re-binding anything.
     content.addEventListener('submit', async (event) => {
         const form = event.target.closest('form[data-modal-form]');
         if (!form) {
@@ -131,11 +155,14 @@
         }
         event.preventDefault();
 
+        // Check in the browser first (same DataAnnotations rules, through jQuery unobtrusive) so obvious mistakes
+        // don't need a round trip. The server checks again no matter what.
         const $ = window.jQuery;
         if ($ && $.fn.valid && !$(form).valid()) {
             return;
         }
 
+        // Disable the buttons while we wait so a double-click doesn't post twice.
         const submitButtons = form.querySelectorAll('[type=submit]');
         submitButtons.forEach((b) => { b.disabled = true; });
         try {
@@ -149,7 +176,7 @@
                 modal.hide();
                 await refresh(result);
             } else if ((response.ok || response.status === 422) && type.includes('text/html')) {
-                // 422 = validation failed (AppController.ModalInvalid): re-render the same partial with its errors.
+                // 422 means it didn't validate (AppController.ModalInvalid) - redraw the partial with the errors.
                 showContent(await response.text());
             } else {
                 showContent(errorHtml('Something went wrong. Please close this dialog and try again.'));

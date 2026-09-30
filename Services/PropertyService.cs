@@ -7,10 +7,24 @@ using Troy_Web_Property_Manager.ViewModels;
 
 namespace Troy_Web_Property_Manager.Services
 {
+    /// <summary>
+    /// Properties, units and the unit type lookup (2.b–2.d).
+    /// </summary>
+    /// <remarks>
+    /// <para>The controllers already handle the role checks (<c>PropertiesController</c> is managers only,
+    /// <c>UnitsController</c> is applicants only and just reads available units), so these methods don't need a
+    /// <see cref="CurrentUser"/>.</para>
+    /// <para>Every read uses <c>Select</c> to go straight into a view model, so SQL only returns the columns the page
+    /// needs - nested collections like a property's units included, all in one query. Availability is worked out in
+    /// the query from the lease dates using the shared <see cref="LeaseRules.ActiveOn"/> expression.</para>
+    /// </remarks>
     public class PropertyService(ApplicationDbContext db)
     {
+        /// <summary>Data for the Properties page: every property, its units, and whether each one is leased today.</summary>
         public Task<List<PropertyViewModel>> GetPropertiesAsync()
         {
+            // This is an Expression<Func<Lease, bool>> so EF can turn it into SQL. The AsQueryable() below is a trick
+            // that lets u.Leases take an expression instead of a compiled delegate.
             var leasedToday = LeaseRules.ActiveOn(DateTime.Today);
             return db.Properties.AsNoTracking().OrderBy(p => p.Name).Select(p => new PropertyViewModel
             {
@@ -30,7 +44,10 @@ namespace Troy_Web_Property_Manager.Services
             }).ToListAsync();
         }
 
-        /// <summary>Units with no lease covering today, optionally for one property (filtered in SQL).</summary>
+        /// <summary>
+        /// Units with no lease covering today, optionally just for one property (filtered in SQL). We never store
+        /// "available" - a stored flag would be wrong the day a lease ends (2.d).
+        /// </summary>
         public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync(int? propertyId = null)
         {
             var leasedToday = LeaseRules.ActiveOn(DateTime.Today);
@@ -65,6 +82,10 @@ namespace Troy_Web_Property_Manager.Services
             await db.SaveChangesAsync();
             return ServiceResult.Ok(property.Id);
         }
+        /// <summary>
+        /// Removes a property and its units - unless any unit has applications. We need to keep applications (and
+        /// their leases and history), so we block the delete instead of cascading it.
+        /// </summary>
         public async Task<ServiceResult> DeletePropertyAsync(int id)
         {
             var property = await db.Properties.Include(p => p.Units).FirstOrDefaultAsync(p => p.Id == id);
@@ -73,15 +94,15 @@ namespace Troy_Web_Property_Manager.Services
             {
                 return ServiceResult.Error("This property has units with applications, so it can't be removed.");
             }
-            // The Unit -> Property FK doesn't cascade, so the units are removed explicitly.
-            // No applications means no leases either, since a lease is only created by approving an application.
+            // The Unit -> Property FK doesn't cascade, so remove the units ourselves.
+            // No applications means no leases either, since the only way to get a lease is an approved application.
             db.Units.RemoveRange(property.Units);
             db.Properties.Remove(property);
             await db.SaveChangesAsync();
             return ServiceResult.Ok();
         }
 
-        /// <summary>Property dropdown options, with <paramref name="selectedId"/> preselected.</summary>
+        /// <summary>Options for the property dropdown, with <paramref name="selectedId"/> already selected.</summary>
         public Task<List<SelectListItem>> GetPropertyOptionsAsync(int? selectedId = null)
         {
             return db.Properties.AsNoTracking().OrderBy(p => p.Name)
@@ -106,19 +127,26 @@ namespace Troy_Web_Property_Manager.Services
                 UnitTypeId = u.UnitTypeId
             }).FirstOrDefaultAsync();
         }
+        /// <summary>
+        /// Adds or edits a unit. Handles the two rules that need the database: you can't pick an inactive unit type
+        /// (2.c says enforce it on the server), and unit numbers have to be unique within a property.
+        /// </summary>
         public async Task<ServiceResult> SaveUnitAsync(UnitFormViewModel model)
         {
+            // When editing, the unit keeps its saved PropertyId. We only use the posted one for a new unit.
             var unit = model.Id is null ? new Unit { PropertyId = model.PropertyId } : await
             db.Units.FindAsync(model.Id);
             if (unit is null || !await db.Properties.AnyAsync(p => p.Id == unit.PropertyId)) return
             ServiceResult.Missing();
-            // Enforced on the server: an inactive type may stay on a unit that already has it, but can't be chosen otherwise.
+            // Server-side check: a unit can keep an inactive type it already has, but nobody can newly pick one.
+            // We compare against the unit's saved type (unit.UnitTypeId), never anything that was posted.
             UnitType? type = await db.UnitTypes.FindAsync(model.UnitTypeId);
             if (type is null || !UnitTypeRules.CanAssign(type, model.Id is null ? null : unit.UnitTypeId))
             {
                 return ServiceResult.Error("Choose an active unit type.", nameof(model.UnitTypeId));
             }
             var number = model.UnitNumber!.Trim();
+            // Nice error message first. The unique index on (PropertyId, UnitNumber) is the real safety net (caught below).
             if (await db.Units.AnyAsync(u => u.PropertyId == unit.PropertyId && u.UnitNumber == number && u.Id != unit.Id))
             {
                 return ServiceResult.Error("This unit number already exists at the property.",
@@ -135,11 +163,12 @@ namespace Troy_Web_Property_Manager.Services
             }
             catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
             {
-                // Another save took the same number between the check above and this insert/update.
+                // Someone else grabbed the same number between our check and this save.
                 return ServiceResult.Error("This unit number already exists at the property.", nameof(model.UnitNumber));
             }
             return ServiceResult.Ok(unit.Id);
         }
+        /// <summary>Removes a unit, unless it has applications (we keep those - see <see cref="DeletePropertyAsync"/>).</summary>
         public async Task<ServiceResult> DeleteUnitAsync(int id)
         {
             var unit = await db.Units.FindAsync(id);
@@ -153,7 +182,10 @@ namespace Troy_Web_Property_Manager.Services
             return ServiceResult.Ok();
         }
 
-        /// <summary>Dropdown options: active types, plus the unit's current type when editing even if it is inactive.</summary>
+        /// <summary>
+        /// Dropdown options: the active types, plus the unit's current type when editing even if it's inactive (2.c).
+        /// That's the UI side of the rule - <see cref="SaveUnitAsync"/> is what actually enforces it.
+        /// </summary>
         public Task<List<SelectListItem>> GetUnitTypeOptionsAsync(int? currentUnitTypeId)
         {
             return db.UnitTypes.Where(t => t.IsActive || t.Id == currentUnitTypeId).OrderBy(t => t.Name)

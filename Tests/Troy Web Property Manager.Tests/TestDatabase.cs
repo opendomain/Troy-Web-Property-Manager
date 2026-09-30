@@ -9,10 +9,10 @@ using Troy_Web_Property_Manager.Services;
 namespace Troy_Web_Property_Manager.Tests
 {
     /// <summary>
-    /// A private in-memory SQLite database built from the real ApplicationDbContext model, so foreign keys,
-    /// unique indexes and the Status concurrency token are enforced. It lives as long as the open connection.
-    /// Always seeded with the status lookup. With sample data (the default) it also has two unit types, three users,
-    /// one property and two units; without it, it has only the lookups Program seeds, like a freshly created database.
+    /// A throwaway in-memory SQLite database built from the real ApplicationDbContext model, so foreign keys, unique
+    /// indexes and the Status concurrency token all actually work. It sticks around as long as the connection is open.
+    /// It always has the status lookup. With sample data (the default) you also get two unit types, three users, one
+    /// property and two units; without it you only get the lookups Program seeds, like a brand new database.
     /// </summary>
     public sealed class TestDatabase : IDisposable
     {
@@ -68,7 +68,7 @@ namespace Troy_Web_Property_Manager.Tests
             InactiveUnitTypeId = inactive.Id;
         }
 
-        /// <summary>A new context, like a new request scope. Disposed with the database.</summary>
+        /// <summary>A fresh context, like you'd get on a new request. Gets disposed along with the database.</summary>
         public ApplicationDbContext CreateContext(params IInterceptor[] interceptors)
         {
             var options = new DbContextOptionsBuilder<ApplicationDbContext>()

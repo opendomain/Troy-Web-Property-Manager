@@ -1,6 +1,16 @@
 @model ResidenceViewModel
 @* data-modal-form: site.js posts this with fetch, then closes the modal and refreshes #residence-history. *@
+@*
+    Modal for adding or editing a residence (4.c, Technical 1.b).
+    - ApplicationsController.Residence (GET) returns this, and site.js puts it in the shared modal.
+    - If the POST doesn't validate, we get this same partial back with a 422 and the errors filled in, so the modal
+      redraws and keeps what they typed. If it works we get JSON and the modal closes.
+    - The form tag helper adds the antiforgery token and site.js posts the whole form, token and all.
+    - Required/length/phone checks come from DataAnnotations (browser and server). "Move-out on or after move-in" is
+      the view model's IValidatableObject rule (server only) and shows under Move-out date.
+*@
 <form asp-controller="Applications" asp-action="Residence" asp-route-id="@Model.ApplicationId" method="post" data-modal-form>
+    @* Empty when adding. When editing, the service only looks for this id inside this user's own application. *@
     <input type="hidden" asp-for="ResidenceId" />
     <div class="modal-header">
         <h5 class="modal-title">@(Model.ResidenceId is null ? "Add residence" : "Edit residence")</h5>
@@ -23,6 +33,7 @@
             <input asp-for="LandlordPhone" class="form-control" />
             <span asp-validation-for="LandlordPhone" class="text-danger"></span>
         </div>
+        @* type="date" plus the ISO format gets us the browser's date picker, and it binds straight back to DateOnly. *@
         <div class="row">
             <div class="col mb-3">
                 <label asp-for="MoveInDate" class="form-label"></label>

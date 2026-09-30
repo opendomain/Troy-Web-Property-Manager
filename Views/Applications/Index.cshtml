@@ -5,7 +5,13 @@
 }
 <h1>@ViewData["Title"]</h1>
 
+@*
+    The application list (6.a). Both roles use this same view - the controller and service decide which rows you get
+    (applicants see their own, managers see all), so apart from the title there's no role logic in here.
+*@
 @* GET form: the filters go into the query string and ApplicationService.ListAsync applies them in SQL. *@
+@* Using GET instead of POST means filtering is safe to repeat, you can bookmark it, and there's no antiforgery
+   token to worry about. The status dropdown comes from the enum, so it always has every status. *@
 <form method="get" class="row g-2 align-items-end mb-3">
     <div class="col-auto">
         <label asp-for="Status" class="form-label"></label>
