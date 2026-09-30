@@ -13,7 +13,10 @@ namespace Troy_Web_Property_Manager.Tests.Data
     {
         private readonly TestDatabase _db = new(withSampleData: false);
 
-        public void Dispose() => _db.Dispose();
+        public void Dispose()
+        {
+            _db.Dispose();
+        }
 
         /// <summary>Seeds the way Program does: roles first, then the demo data through a real UserManager.</summary>
         private static async Task<bool> SeedAsync(TestDatabase db)
@@ -50,8 +53,10 @@ namespace Troy_Web_Property_Manager.Tests.Data
                 .ToListAsync();
         }
 
-        private static List<ApplicationStatusHistory> Timeline(RentalApplication application) =>
-            application.ApplicationStatusHistories.OrderBy(h => h.ChangedDate).ThenBy(h => h.Id).ToList();
+        private static List<ApplicationStatusHistory> Timeline(RentalApplication application)
+        {
+            return application.ApplicationStatusHistories.OrderBy(h => h.ChangedDate).ThenBy(h => h.Id).ToList();
+        }
 
         [Fact]
         public async Task Seed_FillsEmptyDatabaseOnlyOnce()
@@ -77,8 +82,11 @@ namespace Troy_Web_Property_Manager.Tests.Data
             Assert.True(await SeedAsync(_db));
             Assert.True(await SeedAsync(other));
 
-            static Task<List<string>> Units(TestDatabase db) => db.CreateContext().Units
-                .OrderBy(u => u.Id).Select(u => u.Property.Name + " " + u.UnitNumber + " " + u.Bedrooms).ToListAsync();
+            static Task<List<string>> Units(TestDatabase db)
+            {
+                return db.CreateContext().Units
+                    .OrderBy(u => u.Id).Select(u => u.Property.Name + " " + u.UnitNumber + " " + u.Bedrooms).ToListAsync();
+            }
             Assert.Equal(await Units(_db), await Units(other));
         }
 

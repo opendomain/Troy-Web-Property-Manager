@@ -24,8 +24,19 @@ namespace Troy_Web_Property_Manager.ViewModels
 
         /// <summary>The reviewer's comment when the application was returned or denied, shown to the applicant.</summary>
         [BindNever] public string? ReviewComment { get; set; }
-        public bool CanSubmit => CanEdit && ApplicantInformationSaved && ResidenceHistorySaved;
-        public bool CanWithdraw => !IsManager && !ApplicationWorkflow.IsTerminal(Status);
-        public bool CanReview => IsManager && ApplicationWorkflow.CanReview(Status);
+        public bool CanSubmit
+        {
+            get { return CanEdit && ApplicantInformationSaved && ResidenceHistorySaved; }
+        }
+
+        public bool CanWithdraw
+        {
+            get { return !IsManager && !ApplicationWorkflow.IsTerminal(Status); }
+        }
+
+        public bool CanReview
+        {
+            get { return IsManager && ApplicationWorkflow.CanReview(Status); }
+        }
     }
 }

@@ -10,11 +10,15 @@ namespace Troy_Web_Property_Manager.Services
     public class ApplicationService(ApplicationDbContext db)
     {
         /// <summary>Row-level security in one place: managers see all applications, applicants only their own.</summary>
-        private IQueryable<RentalApplication> Visible(CurrentUser user) =>
-            user.IsManager ? db.RentalApplications : db.RentalApplications.Where(a => a.Applicant.UserId == user.Id);
+        private IQueryable<RentalApplication> Visible(CurrentUser user)
+        {
+            return user.IsManager ? db.RentalApplications : db.RentalApplications.Where(a => a.Applicant.UserId == user.Id);
+        }
 
-        private Task<bool> UnitHasActiveLeaseAsync(int unitId) =>
-            db.Leases.Where(l => l.UnitId == unitId).AnyAsync(LeaseRules.ActiveOn(DateTime.Today));
+        private Task<bool> UnitHasActiveLeaseAsync(int unitId)
+        {
+            return db.Leases.Where(l => l.UnitId == unitId).AnyAsync(LeaseRules.ActiveOn(DateTime.Today));
+        }
 
         /// <summary>
         /// Saves changes to an application. Status is a concurrency token, so if someone else changed the status
@@ -193,8 +197,9 @@ namespace Troy_Web_Property_Manager.Services
             return await SaveApplicationAsync();
         }
 
-        public Task<ResidenceViewModel?> GetResidenceAsync(int id, int residenceId, CurrentUser user) =>
-            Visible(user).Where(a => a.Id == id).SelectMany(a => a.Residences).Where(r => r.Id == residenceId)
+        public Task<ResidenceViewModel?> GetResidenceAsync(int id, int residenceId, CurrentUser user)
+        {
+            return Visible(user).Where(a => a.Id == id).SelectMany(a => a.Residences).Where(r => r.Id == residenceId)
                 .Select(r => new ResidenceViewModel
                 {
                     ApplicationId = id,
@@ -205,6 +210,7 @@ namespace Troy_Web_Property_Manager.Services
                     MoveInDate = r.MoveInDate,
                     MoveOutDate = r.MoveOutDate
                 }).FirstOrDefaultAsync();
+        }
 
         public async Task<ServiceResult> SaveResidenceAsync(int id, ResidenceViewModel model, CurrentUser user)
         {

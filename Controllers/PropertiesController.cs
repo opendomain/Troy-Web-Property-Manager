@@ -10,10 +10,16 @@ namespace Troy_Web_Property_Manager.Controllers
     [Authorize(Roles = AppRoles.PropertyManager)]
     public class PropertiesController(PropertyService properties) : AppController
     {
-        public async Task<IActionResult> Index() => View(await properties.GetPropertiesAsync());
+        public async Task<IActionResult> Index()
+        {
+            return View(await properties.GetPropertiesAsync());
+        }
         /// <summary>Returns the property list partial; the modal script calls it to refresh the page region.</summary>
-        public async Task<IActionResult> List() => PartialView("_PropertyList", await
-        properties.GetPropertiesAsync());
+        public async Task<IActionResult> List()
+        {
+            return PartialView("_PropertyList", await
+            properties.GetPropertiesAsync());
+        }
         // ----- Property: one form for add (no id) and edit (id) -----
         public async Task<IActionResult> Edit(int? id)
         {
@@ -29,7 +35,10 @@ namespace Troy_Web_Property_Manager.Controllers
             return result.NotFound ? NotFound() : RefreshList();
         }
 
-        public IActionResult Delete(int id) => PartialView("_Confirm", ConfirmDelete(id));
+        public IActionResult Delete(int id)
+        {
+            return PartialView("_Confirm", ConfirmDelete(id));
+        }
         [HttpPost, ActionName(nameof(Delete))]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
@@ -68,7 +77,10 @@ namespace Troy_Web_Property_Manager.Controllers
             return ModalInvalid("_UnitForm", model);
         }
 
-        public IActionResult DeleteUnit(int id) => PartialView("_Confirm", ConfirmDeleteUnit(id));
+        public IActionResult DeleteUnit(int id)
+        {
+            return PartialView("_Confirm", ConfirmDeleteUnit(id));
+        }
         [HttpPost, ActionName(nameof(DeleteUnit))]
         public async Task<IActionResult> DeleteUnitConfirmed(int id)
         {
@@ -78,13 +90,20 @@ namespace Troy_Web_Property_Manager.Controllers
             AddErrors(result);
             return ModalInvalid("_Confirm", ConfirmDeleteUnit(id));
         }
-        private IActionResult RefreshList() => ModalSuccess("#property-list", Url.Action(nameof(List)));
-        private ConfirmViewModel ConfirmDelete(int id) =>
-            new("Remove property", "Remove this property and all of its units?", Url.Action(nameof(Delete), new
+        private IActionResult RefreshList()
+        {
+            return ModalSuccess("#property-list", Url.Action(nameof(List)));
+        }
+        private ConfirmViewModel ConfirmDelete(int id)
+        {
+            return new("Remove property", "Remove this property and all of its units?", Url.Action(nameof(Delete), new
             {
                 id
             })!);
-        private ConfirmViewModel ConfirmDeleteUnit(int id) =>
-            new("Remove unit", "Remove this unit?", Url.Action(nameof(DeleteUnit), new { id })!);
+        }
+        private ConfirmViewModel ConfirmDeleteUnit(int id)
+        {
+            return new("Remove unit", "Remove this unit?", Url.Action(nameof(DeleteUnit), new { id })!);
+        }
     }
 }

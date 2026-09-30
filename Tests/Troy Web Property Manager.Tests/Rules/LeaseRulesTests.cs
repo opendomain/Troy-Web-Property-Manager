@@ -13,8 +13,10 @@ namespace Troy_Web_Property_Manager.Tests.Rules
         }
 
         [Fact]
-        public void EndDateFor_ClampsToEndOfShorterMonth() =>
+        public void EndDateFor_ClampsToEndOfShorterMonth()
+        {
             Assert.Equal(new DateTime(2025, 2, 28), LeaseRules.EndDateFor(new DateTime(2024, 2, 29)));
+        }
 
         [Theory]
         [InlineData("2026-01-01", true)]  // start date is inclusive
