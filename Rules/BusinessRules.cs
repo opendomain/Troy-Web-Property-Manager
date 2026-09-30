@@ -38,14 +38,13 @@ namespace Troy_Web_Property_Manager.Rules
             ReviewOutcome.Deny => ApplicationStatus.Denied,
             _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown review outcome.")
         };
-        public static bool RequiresComment(ReviewOutcome outcome) => outcome is ReviewOutcome.Return or
-        ReviewOutcome.Deny;
+        public static bool RequiresComment(ReviewOutcome outcome) => outcome is ReviewOutcome.Return or ReviewOutcome.Deny;
         public static ApplicationSection Next(ApplicationSection section) =>
-        section == ApplicationSection.Applicant ? ApplicationSection.ResidenceHistory :
-        ApplicationSection.Summary;
+            section == ApplicationSection.Applicant ? ApplicationSection.ResidenceHistory :
+            ApplicationSection.Summary;
         public static ApplicationSection Previous(ApplicationSection section) =>
-        section == ApplicationSection.Summary ? ApplicationSection.ResidenceHistory :
-        ApplicationSection.Applicant;
+            section == ApplicationSection.Summary ? ApplicationSection.ResidenceHistory :
+            ApplicationSection.Applicant;
     }
 
     public static class LeaseRules
