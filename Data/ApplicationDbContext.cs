@@ -9,13 +9,15 @@ namespace Troy_Web_Property_Manager.Data
     {
         public virtual DbSet<Applicant> Applicants { get; set; }
 
+        public virtual DbSet<ApplicantInformation> ApplicantInformation { get; set; }
+
         public virtual DbSet<ApplicationStatusHistory> ApplicationStatusHistories { get; set; }
 
         public virtual DbSet<Lease> Leases { get; set; }
 
         public virtual DbSet<Property> Properties { get; set; }
 
-        public virtual DbSet<RentApplication> RentApplications { get; set; }
+        public virtual DbSet<RentalApplication> RentalApplications { get; set; }
 
         public virtual DbSet<Residence> Residences { get; set; }
 
@@ -29,6 +31,24 @@ namespace Troy_Web_Property_Manager.Data
         {
             // Configures the Identity (AspNet*) tables
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<ApplicantInformation>(entity =>
+            {
+                entity.ToTable("ApplicantInformation");
+
+                // One row per application: the application's id is also this table's key.
+                entity.HasKey(e => e.RentalApplicationId);
+                entity.Property(e => e.RentalApplicationId).HasColumnName("RentalApplicationID").ValueGeneratedNever();
+                entity.Property(e => e.Name).HasMaxLength(50);
+                entity.Property(e => e.Phone).HasMaxLength(50);
+                entity.Property(e => e.Email).HasMaxLength(50);
+                entity.Property(e => e.CurrentAddress).HasMaxLength(50);
+
+                entity.HasOne(d => d.RentalApplication).WithOne(p => p.ApplicantInformation)
+                    .HasForeignKey<ApplicantInformation>(d => d.RentalApplicationId)
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .HasConstraintName("FK_ApplicantInformation_RentalApplications");
+            });
 
             modelBuilder.Entity<Applicant>(entity =>
             {
@@ -96,9 +116,9 @@ namespace Troy_Web_Property_Manager.Data
                 entity.Property(e => e.Name).HasMaxLength(50);
             });
 
-            modelBuilder.Entity<RentApplication>(entity =>
+            modelBuilder.Entity<RentalApplication>(entity =>
             {
-                entity.ToTable("RentApplications");
+                entity.ToTable("RentalApplications");
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.ApplicantId).HasColumnName("ApplicantID");
@@ -106,17 +126,17 @@ namespace Troy_Web_Property_Manager.Data
                 entity.Property(e => e.Submitted).HasColumnType("datetime");
                 entity.Property(e => e.UnitId).HasColumnName("UnitID");
 
-                entity.HasOne(d => d.Applicant).WithMany(p => p.RentApplications)
+                entity.HasOne(d => d.Applicant).WithMany(p => p.RentalApplications)
                     .HasForeignKey(d => d.ApplicantId)
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("FK_RentApplications_Applicant");
 
-                entity.HasOne(d => d.StatusNavigation).WithMany(p => p.RentApplications)
+                entity.HasOne(d => d.StatusNavigation).WithMany(p => p.RentalApplications)
                     .HasForeignKey(d => d.Status)
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("FK_RentApplications_Status");
 
-                entity.HasOne(d => d.Unit).WithMany(p => p.RentApplications)
+                entity.HasOne(d => d.Unit).WithMany(p => p.RentalApplications)
                     .HasForeignKey(d => d.UnitId)
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("FK_RentApplications_Unit");
@@ -155,7 +175,7 @@ namespace Troy_Web_Property_Manager.Data
                 entity.Property(e => e.Id).HasColumnName("id");
                 // DB defaults are kept for raw SQL inserts; EF always sends the value so 0 bedrooms / 0 rent are stored as-is
                 entity.Property(e => e.Bedrooms).HasDefaultValue(1, "DF_Unit_Bedrooms").ValueGeneratedNever();
-                entity.Property(e => e.Rent).HasPrecision(10, 2).HasDefaultValue(0m, "DF_Unit_Rent").ValueGeneratedNever();
+                entity.Property(e => e.MonthlyRent).HasPrecision(10, 2).HasDefaultValue(0m, "DF_Unit_Rent").ValueGeneratedNever();
                 entity.Property(e => e.UnitNumber).HasMaxLength(50);
                 entity.Property(e => e.UnitTypeId).HasColumnName("UnitTypeID");
 
@@ -175,7 +195,7 @@ namespace Troy_Web_Property_Manager.Data
                 entity.ToTable("UnitType");
 
                 entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.Active).HasDefaultValue(false, "DF_UnitType_Active").ValueGeneratedNever();
+                entity.Property(e => e.IsActive).HasDefaultValue(false, "DF_UnitType_Active").ValueGeneratedNever();
                 entity.Property(e => e.Name).HasMaxLength(50);
             });
         }

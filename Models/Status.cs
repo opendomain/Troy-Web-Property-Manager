@@ -9,5 +9,5 @@ public partial class Status
 
     public string Name { get; set; } = null!;
 
-    public virtual ICollection<RentApplication> RentApplications { get; set; } = new List<RentApplication>();
+    public virtual ICollection<RentalApplication> RentalApplications { get; set; } = new List<RentalApplication>();
 }

@@ -11,8 +11,8 @@ namespace Troy_Web_Property_Manager.Services
     public class ApplicationService(ApplicationDbContext db)
     {
         /// <summary>Row-level security in one place: managers see all applications, applicants only their own.</summary>
-        private IQueryable<RentApplication> Visible(CurrentUser user) =>
-            user.IsManager ? db.RentApplications : db.RentApplications.Where(a => a.Applicant.UserId == user.Id);
+        private IQueryable<RentalApplication> Visible(CurrentUser user) =>
+            user.IsManager ? db.RentalApplications : db.RentalApplications.Where(a => a.Applicant.UserId == user.Id);
 
         private Task<bool> UnitHasActiveLeaseAsync(int unitId) =>
             db.Leases.Where(l => l.UnitId == unitId).AnyAsync(LeaseRules.ActiveOn(DateTime.Today));
@@ -24,7 +24,7 @@ namespace Troy_Web_Property_Manager.Services
             if (!await db.Units.AnyAsync(u => u.Id == unitId)) return ServiceResult.Missing();
 
             // Applying again for the same unit reopens the user's open application instead of starting a duplicate.
-            var openId = await db.RentApplications
+            var openId = await db.RentalApplications
                 .Where(a => a.UnitId == unitId && a.Applicant.UserId == user.Id
                     && (a.Status == (int)ApplicationStatus.Draft || a.Status == (int)ApplicationStatus.Submitted || a.Status == (int)ApplicationStatus.Returned))
                 .Select(a => (int?)a.Id)
@@ -49,7 +49,7 @@ namespace Troy_Web_Property_Manager.Services
                 db.Applicants.Add(applicant);
             }
 
-            var application = new RentApplication
+            var application = new RentalApplication
             {
                 UnitId = unitId,
                 Applicant = applicant,
@@ -64,7 +64,7 @@ namespace Troy_Web_Property_Manager.Services
                 ChangedDate = application.Created
             });
 
-            db.RentApplications.Add(application);
+            db.RentalApplications.Add(application);
             await db.SaveChangesAsync();
             return ServiceResult.Ok(application.Id);
         }
@@ -74,14 +74,19 @@ namespace Troy_Web_Property_Manager.Services
             var application = await Visible(user).AsNoTracking()
                 .Include(a => a.Unit).ThenInclude(u => u.Property)
                 .Include(a => a.Applicant)
+                .Include(a => a.ApplicantInformation)
                 .Include(a => a.Residences)
                 .FirstOrDefaultAsync(a => a.Id == id);
             if (application is null) return null;
 
             // Server-side decision: only the applicant, and only while Draft or Returned, may edit.
             var canEdit = !user.IsManager && ApplicationWorkflow.IsEditable((ApplicationStatus)application.Status);
-            var current = section ?? (canEdit ? ApplicationSection.Applicant : ApplicationSection.Summary);
-            var info = application.Applicant;
+            var current = section ?? (canEdit ? ApplicationSection.ApplicantInformation : ApplicationSection.Summary);
+
+            // The application's own copy once the section is saved; until then, the applicant's defaults pre-fill it.
+            var info = application.ApplicantInformation is { } saved
+                ? (saved.Name, saved.Phone, saved.Email, saved.CurrentAddress)
+                : (application.Applicant.Name, application.Applicant.Phone, application.Applicant.Email, application.Applicant.CurrentAddress);
 
             // A returned or denied applicant needs to know why; the full history stays manager-only.
             string? reviewComment = null;
@@ -99,8 +104,8 @@ namespace Troy_Web_Property_Manager.Services
                 Id = application.Id,
                 Section = current,
                 Status = (ApplicationStatus)application.Status,
-                UnitLabel = $"{application.Unit.Property.Name}, unit {application.Unit.UnitNumber} ({application.Unit.Rent:C0}/month)",
-                Applicant = new()
+                UnitLabel = $"{application.Unit.Property.Name}, unit {application.Unit.UnitNumber} ({application.Unit.MonthlyRent:C0}/month)",
+                ApplicantInformation = new()
                 {
                     Name = info.Name,
                     Phone = info.Phone,
@@ -117,8 +122,8 @@ namespace Troy_Web_Property_Manager.Services
                     MoveInDate = r.MoveInDate,
                     MoveOutDate = r.MoveOutDate
                 }).ToList(),
-                ApplicantSaved = application.ApplicantSectionSaved,
-                ResidenceHistorySaved = application.ResidenceSectionSaved,
+                ApplicantInformationSaved = application.ApplicantInformationSaved,
+                ResidenceHistorySaved = application.ResidenceHistorySaved,
                 CanEdit = canEdit,
                 IsReadOnly = !canEdit || current == ApplicationSection.Summary,
                 IsManager = user.IsManager,
@@ -126,18 +131,23 @@ namespace Troy_Web_Property_Manager.Services
             };
         }
 
-        public async Task<ServiceResult> SaveApplicantAsync(int id, ApplicantViewModel model, CurrentUser user)
+        public async Task<ServiceResult> SaveApplicantInformationAsync(int id, ApplicantInformationViewModel model, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
 
             // Callers pass a model that passed validation, so the required fields are present.
-            var info = application!.Applicant;
+            // Saved on this application only, so other applications (e.g. already submitted ones) are unaffected.
+            var info = application!.ApplicantInformation ??= new ApplicantInformation();
             info.Name = model.Name!.Trim();
             info.Phone = model.Phone!.Trim();
             info.Email = model.Email!.Trim();
             info.CurrentAddress = model.CurrentAddress!.Trim();
-            application.ApplicantSectionSaved = true;
+            application.ApplicantInformationSaved = true;
+
+            // Remember the latest details as defaults for the applicant's next application.
+            var defaults = application.Applicant;
+            (defaults.Name, defaults.Phone, defaults.Email, defaults.CurrentAddress) = (info.Name, info.Phone, info.Email, info.CurrentAddress);
             await db.SaveChangesAsync();
             return ServiceResult.Ok();
         }
@@ -148,7 +158,7 @@ namespace Troy_Web_Property_Manager.Services
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
             if (application!.Residences.Count == 0) return ServiceResult.Error("Add at least one prior residence.");
-            application.ResidenceSectionSaved = true;
+            application.ResidenceHistorySaved = true;
             await db.SaveChangesAsync();
             return ServiceResult.Ok();
         }
@@ -193,7 +203,7 @@ namespace Troy_Web_Property_Manager.Services
             application.Residences.Remove(residence);
             db.Residences.Remove(residence);
             // With no residences left the section is no longer complete, so Submit waits until it's saved again.
-            if (application.Residences.Count == 0) application.ResidenceSectionSaved = false;
+            if (application.Residences.Count == 0) application.ResidenceHistorySaved = false;
             await db.SaveChangesAsync();
             return ServiceResult.Ok();
         }
@@ -202,7 +212,7 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            if (!application!.ApplicantSectionSaved || !application.ResidenceSectionSaved || application.Residences.Count == 0)
+            if (!application!.ApplicantInformationSaved || !application.ResidenceHistorySaved || application.Residences.Count == 0)
             {
                 return ServiceResult.Error("Save both sections before submitting.");
             }
@@ -235,7 +245,7 @@ namespace Troy_Web_Property_Manager.Services
         public async Task<bool> CanReviewAsync(int id, CurrentUser user)
         {
             if (!user.IsManager) return false;
-            var status = await db.RentApplications.Where(a => a.Id == id).Select(a => (int?)a.Status).FirstOrDefaultAsync();
+            var status = await db.RentalApplications.Where(a => a.Id == id).Select(a => (int?)a.Status).FirstOrDefaultAsync();
             return status is int s && ApplicationWorkflow.CanReview((ApplicationStatus)s);
         }
 
@@ -271,7 +281,7 @@ namespace Troy_Web_Property_Manager.Services
             // If they race, SQL Server rolls one back (a deadlock), which ReviewAsync reports to the user.
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
-            var application = await db.RentApplications.FirstOrDefaultAsync(a => a.Id == id);
+            var application = await db.RentalApplications.FirstOrDefaultAsync(a => a.Id == id);
             if (application is null) return ServiceResult.Missing();
             if (!ApplicationWorkflow.CanReview((ApplicationStatus)application.Status))
             {
@@ -341,7 +351,8 @@ namespace Troy_Web_Property_Manager.Services
                 Id = a.Id,
                 PropertyName = a.Unit.Property.Name,
                 UnitNumber = a.Unit.UnitNumber,
-                Applicant = a.Applicant.Email,
+                // The email given on this application, or the applicant's default before the section is saved.
+                Applicant = a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email,
                 Status = (ApplicationStatus)a.Status,
                 SubmittedAt = a.Submitted
             }).ToListAsync();
@@ -352,10 +363,11 @@ namespace Troy_Web_Property_Manager.Services
 
         // ---------------- Helpers ----------------
         /// <summary>Loads an application for an applicant write; rejects it unless it is theirs and still Draft or Returned.</summary>
-        private async Task<(RentApplication? Application, ServiceResult? Error)> LoadEditableAsync(int id, CurrentUser user)
+        private async Task<(RentalApplication? Application, ServiceResult? Error)> LoadEditableAsync(int id, CurrentUser user)
         {
             var application = await Visible(user)
                 .Include(a => a.Applicant)
+                .Include(a => a.ApplicantInformation)
                 .Include(a => a.Residences)
                 .FirstOrDefaultAsync(a => a.Id == id);
             if (application is null) return (null, ServiceResult.Missing());
@@ -367,7 +379,7 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>Every status change goes through here: it checks the state machine and records history.</summary>
-        private static void ChangeStatus(RentApplication application, ApplicationStatus to, CurrentUser user,
+        private static void ChangeStatus(RentalApplication application, ApplicationStatus to, CurrentUser user,
             ReviewOutcome? outcome = null, string? comment = null)
         {
             var from = (ApplicationStatus)application.Status;

@@ -6,7 +6,7 @@ namespace Troy_Web_Property_Manager.Rules
     public static class UnitTypeRules
     {
         /// <summary>An inactive type is allowed only if it is already the unit's current type (currentUnitTypeId is null for a new unit).</summary>
-        public static bool CanAssign(UnitType type, int? currentUnitTypeId) => type.Active || type.Id == currentUnitTypeId;
+        public static bool CanAssign(UnitType type, int? currentUnitTypeId) => type.IsActive || type.Id == currentUnitTypeId;
     }
 
     public static class ApplicationWorkflow
@@ -41,11 +41,11 @@ namespace Troy_Web_Property_Manager.Rules
         public static bool RequiresComment(ReviewOutcome outcome) => outcome is ReviewOutcome.Return or
         ReviewOutcome.Deny;
         public static ApplicationSection Next(ApplicationSection section) =>
-        section == ApplicationSection.Applicant ? ApplicationSection.ResidenceHistory :
+        section == ApplicationSection.ApplicantInformation ? ApplicationSection.ResidenceHistory :
         ApplicationSection.Summary;
         public static ApplicationSection Previous(ApplicationSection section) =>
         section == ApplicationSection.Summary ? ApplicationSection.ResidenceHistory :
-        ApplicationSection.Applicant;
+        ApplicationSection.ApplicantInformation;
     }
 
     public static class LeaseRules

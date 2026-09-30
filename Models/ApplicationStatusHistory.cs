@@ -24,5 +24,5 @@ public partial class ApplicationStatusHistory
 
     public int RentalApplicationId { get; set; }
 
-    public virtual RentApplication RentalApplication { get; set; } = null!;
+    public virtual RentalApplication RentalApplication { get; set; } = null!;
 }

@@ -22,9 +22,9 @@ namespace Troy_Web_Property_Manager.Services
                     Id = u.Id,
                     UnitNumber = u.UnitNumber,
                     Bedrooms = u.Bedrooms,
-                    MonthlyRent = u.Rent,
+                    MonthlyRent = u.MonthlyRent,
                     UnitTypeName = u.UnitType.Name,
-                    UnitTypeIsActive = u.UnitType.Active,
+                    UnitTypeIsActive = u.UnitType.IsActive,
                     IsLeased = u.Leases.AsQueryable().Any(leasedToday)
                 }).ToList()
             }).ToListAsync();
@@ -44,7 +44,7 @@ namespace Troy_Web_Property_Manager.Services
                 PropertyName = u.Property.Name,
                 UnitNumber = u.UnitNumber,
                 Bedrooms = u.Bedrooms,
-                MonthlyRent = u.Rent,
+                MonthlyRent = u.MonthlyRent,
                 UnitTypeName = u.UnitType.Name
             }).ToListAsync();
         }
@@ -67,7 +67,7 @@ namespace Troy_Web_Property_Manager.Services
         {
             var property = await db.Properties.Include(p => p.Units).FirstOrDefaultAsync(p => p.Id == id);
             if (property is null) return ServiceResult.Missing();
-            if (await db.RentApplications.AnyAsync(a => a.Unit.PropertyId == id))
+            if (await db.RentalApplications.AnyAsync(a => a.Unit.PropertyId == id))
             {
                 return ServiceResult.Error("This property has units with applications, so it can't be removed.");
             }
@@ -94,7 +94,7 @@ namespace Troy_Web_Property_Manager.Services
             PropertyId = u.PropertyId,
             UnitNumber = u.UnitNumber,
             Bedrooms = u.Bedrooms,
-            MonthlyRent = u.Rent,
+            MonthlyRent = u.MonthlyRent,
             UnitTypeId = u.UnitTypeId
         }).FirstOrDefaultAsync();
         public async Task<ServiceResult> SaveUnitAsync(UnitFormViewModel model)
@@ -117,7 +117,7 @@ namespace Troy_Web_Property_Manager.Services
             }
             unit.UnitNumber = number;
             unit.Bedrooms = model.Bedrooms!.Value;
-            unit.Rent = model.MonthlyRent!.Value;
+            unit.MonthlyRent = model.MonthlyRent!.Value;
             unit.UnitTypeId = type.Id;
             if (model.Id is null) db.Units.Add(unit);
             await db.SaveChangesAsync();
@@ -127,7 +127,7 @@ namespace Troy_Web_Property_Manager.Services
         {
             var unit = await db.Units.FindAsync(id);
             if (unit is null) return ServiceResult.Missing();
-            if (await db.RentApplications.AnyAsync(a => a.UnitId == id))
+            if (await db.RentalApplications.AnyAsync(a => a.UnitId == id))
             {
                 return ServiceResult.Error("This unit has applications, so it can't be removed.");
             }
@@ -138,8 +138,8 @@ namespace Troy_Web_Property_Manager.Services
 
         /// <summary>Dropdown options: active types, plus the unit's current type when editing even if it is inactive.</summary>
         public Task<List<SelectListItem>> GetUnitTypeOptionsAsync(int? currentUnitTypeId) =>
-            db.UnitTypes.Where(t => t.Active || t.Id == currentUnitTypeId).OrderBy(t => t.Name)
-            .Select(t => new SelectListItem(t.Active ? t.Name : t.Name + " (inactive)", t.Id.ToString()))
+            db.UnitTypes.Where(t => t.IsActive || t.Id == currentUnitTypeId).OrderBy(t => t.Name)
+            .Select(t => new SelectListItem(t.IsActive ? t.Name : t.Name + " (inactive)", t.Id.ToString()))
             .ToListAsync();
     }
 }

@@ -7,7 +7,7 @@ using Troy_Web_Property_Manager.Rules;
 namespace Troy_Web_Property_Manager.ViewModels
 {
     /// <summary>Section 1 fields. The validation rules for this section live here.</summary>
-    public class ApplicantViewModel
+    public class ApplicantInformationViewModel
     {
         // Lengths match the Applicant columns (nvarchar(50)).
         [Required, StringLength(50)] public string? Name { get; set; }
@@ -45,11 +45,11 @@ namespace Troy_Web_Property_Manager.ViewModels
     {
         public int Id { get; set; }
         public ApplicationSection Section { get; set; }
-        public ApplicantViewModel Applicant { get; set; } = new();
+        public ApplicantInformationViewModel ApplicantInformation { get; set; } = new();
         [BindNever] public ApplicationStatus Status { get; set; }
         [BindNever] public string UnitLabel { get; set; } = "";
         [BindNever] public List<ResidenceViewModel> Residences { get; set; } = [];
-        [BindNever] public bool ApplicantSaved { get; set; }
+        [BindNever] public bool ApplicantInformationSaved { get; set; }
         [BindNever] public bool ResidenceHistorySaved { get; set; }
         [BindNever] public bool CanEdit { get; set; } // server-side decision
         [BindNever] public bool IsReadOnly { get; set; } // !CanEdit, or on the Summary
@@ -57,7 +57,7 @@ namespace Troy_Web_Property_Manager.ViewModels
 
         /// <summary>The reviewer's comment when the application was returned or denied, shown to the applicant.</summary>
         [BindNever] public string? ReviewComment { get; set; }
-        public bool CanSubmit => CanEdit && ApplicantSaved && ResidenceHistorySaved;
+        public bool CanSubmit => CanEdit && ApplicantInformationSaved && ResidenceHistorySaved;
         public bool CanWithdraw => !IsManager && !ApplicationWorkflow.IsTerminal(Status);
         public bool CanReview => IsManager && ApplicationWorkflow.CanReview(Status);
     }

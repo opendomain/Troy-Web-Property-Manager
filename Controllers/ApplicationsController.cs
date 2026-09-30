@@ -12,7 +12,7 @@ namespace Troy_Web_Property_Manager.Controllers
     [Authorize(Roles = AppRoles.Applicant + "," + AppRoles.PropertyManager)]
     public class ApplicationsController(ApplicationService applications, PropertyService properties) : AppController
     {
-        private const string InfoPrefix = nameof(ApplicationEditorViewModel.Applicant) + ".";
+        private const string InfoPrefix = nameof(ApplicationEditorViewModel.ApplicantInformation) + ".";
         private const string ResidenceHistoryTarget = "#residence-history";
 
         // ---------------- List ----------------
@@ -62,11 +62,11 @@ namespace Troy_Web_Property_Manager.Controllers
 
                 case "continue":
                     ServiceResult result;
-                    if (model.Section == ApplicationSection.Applicant)
+                    if (model.Section == ApplicationSection.ApplicantInformation)
                     {
                         // Persist only when this section is valid; otherwise re-render it with the errors.
                         if (!SectionIsValid(InfoPrefix)) return await RedisplayAsync(id, model);
-                        result = await applications.SaveApplicantAsync(id, model.Applicant, CurrentUser);
+                        result = await applications.SaveApplicantInformationAsync(id, model.ApplicantInformation, CurrentUser);
                     }
                     else if (model.Section == ApplicationSection.ResidenceHistory)
                     {
@@ -76,7 +76,7 @@ namespace Troy_Web_Property_Manager.Controllers
 
                     if (result.NotFound) return NotFound();
                     if (result.Succeeded) return RedirectToAction(nameof(Edit), new { id, section = ApplicationWorkflow.Next(model.Section) });
-                    AddErrors(result, model.Section == ApplicationSection.Applicant ? InfoPrefix : "");
+                    AddErrors(result, model.Section == ApplicationSection.ApplicantInformation ? InfoPrefix : "");
                     return await RedisplayAsync(id, model);
 
                 case "submit":
@@ -104,9 +104,9 @@ namespace Troy_Web_Property_Manager.Controllers
             var model = await applications.GetEditorAsync(id, posted.Section, CurrentUser);
             if (model is null) return NotFound();
 
-            if (posted.Section == ApplicationSection.Applicant)
+            if (posted.Section == ApplicationSection.ApplicantInformation)
             {
-                model.Applicant = posted.Applicant;
+                model.ApplicantInformation = posted.ApplicantInformation;
             }
             else
             {
