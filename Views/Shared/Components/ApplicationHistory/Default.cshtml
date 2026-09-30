@@ -1,0 +1,22 @@
+@model List<HistoryItemViewModel>
+<div class="card">
+    <div class="card-header">History</div>
+    <ul class="list-group list-group-flush">
+        @foreach (var item in Model)
+        {
+            <li class="list-group-item">
+                <strong>@(item.FromStatus is null ? "Created" : $"{item.FromStatus} → {item.ToStatus}")</strong>
+                @if (item.Outcome is not null)
+                {
+                    <span>(@item.Outcome)</span>
+                }
+                @* ChangedAt is stored in server local time, so it is shown as-is. *@
+                <div class="small text-muted">@item.ChangedBy · @item.ChangedAt.ToString("g")</div>
+                @if (!string.IsNullOrEmpty(item.Comment))
+                {
+                    <div class="small">@item.Comment</div>
+                }
+            </li>
+        }
+    </ul>
+</div>
