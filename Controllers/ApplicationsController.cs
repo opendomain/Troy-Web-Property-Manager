@@ -10,15 +10,21 @@ namespace Troy_Web_Property_Manager.Controllers
 {
     /// <summary>Applicants see their own applications; property managers see all of them.</summary>
     [Authorize(Roles = AppRoles.Applicant + "," + AppRoles.PropertyManager)]
-    public class ApplicationsController(ApplicationService applications) : AppController
+    public class ApplicationsController(ApplicationService applications, PropertyService properties) : AppController
     {
         private const string InfoPrefix = nameof(ApplicationEditorViewModel.Applicant) + ".";
         private const string ResidenceHistoryTarget = "#residence-history";
 
         // ---------------- List ----------------
 
-        // TODO: Step 14 replaces this with the filtered list (ApplicationListViewModel) and its view.
-        public IActionResult Index() => View(CurrentUser);
+        /// <summary>Applicants see their own applications, managers all of them; the filters run in SQL.</summary>
+        public async Task<IActionResult> Index(ApplicationStatus? status, int? propertyId) => View(new ApplicationListViewModel
+        {
+            Status = status,
+            PropertyId = propertyId,
+            Items = await applications.ListAsync(status, propertyId, CurrentUser),
+            Properties = await properties.GetPropertyOptionsAsync(propertyId)
+        });
 
         // ---------------- Start ----------------
 

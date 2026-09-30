@@ -1,8 +1,59 @@
-@model CurrentUser
+@model ApplicationListViewModel
 @{
-    ViewData["Title"] = Model.IsManager ? "Applications" : "My applications";
+    ViewData["Title"] = User.IsInRole(AppRoles.PropertyManager) ? "Applications" : "My applications";
 }
-
 <h1>@ViewData["Title"]</h1>
 
-<p class="text-muted">Applications will be listed here.</p>
+@* GET form: the filters go into the query string and ApplicationService.ListAsync applies them in SQL. *@
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-auto">
+        <label asp-for="Status" class="form-label"></label>
+        <select class="form-select" asp-for="Status" asp-items="Html.GetEnumSelectList<ApplicationStatus>()">
+            <option value="">All statuses</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label asp-for="PropertyId" class="form-label">Property</label>
+        <select class="form-select" asp-for="PropertyId" asp-items="Model.Properties">
+            <option value="">All properties</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary">Filter</button>
+        <a asp-action="Index" class="btn btn-link">Clear</a>
+    </div>
+</form>
+
+@if (Model.Items.Count == 0)
+{
+    <p class="text-muted">No applications found.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Property / unit</th>
+                    <th scope="col">Applicant</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Submitted</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Items)
+                {
+                    <tr>
+                        <td><a asp-action="Edit" asp-route-id="@item.Id">@item.Id</a></td>
+                        <td>@item.PropertyName · @item.UnitNumber</td>
+                        <td>@item.Applicant</td>
+                        <td>@item.Status</td>
+                        @* Times are stored in server local time, so they're shown as-is. *@
+                        <td>@item.SubmittedAt?.ToShortDateString()</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
