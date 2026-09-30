@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-
 namespace Troy_Web_Property_Manager.Models;
 
+/// <summary>One prior residence in the Residence History section of an application.</summary>
 public partial class Residence
 {
     public int Id { get; set; }
@@ -13,9 +11,9 @@ public partial class Residence
 
     public string LandlordPhone { get; set; } = null!;
 
-    public DateTime StartDate { get; set; }
+    public DateOnly MoveInDate { get; set; }
 
-    public DateTime EndDate { get; set; }
+    public DateOnly MoveOutDate { get; set; }
 
     public int RentalApplicationId { get; set; }
 
