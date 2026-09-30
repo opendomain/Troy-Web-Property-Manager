@@ -114,6 +114,9 @@
            rows plus user emails) that this page's view model doesn't have. _ViewImports turns on the <vc:...> tag.
            The component also turns away non-managers on its own, so even without this if, nothing would leak. *@
         <div class="col-lg-4">
+            @* Private manager notes. Also a view component, so the notes never go into this page's view model -
+               that model is what applicants get. It renders nothing for non-managers too. *@
+            <vc:manager-notes application-id="Model.Id" />
             <vc:application-history application-id="Model.Id" />
         </div>
     }

@@ -35,6 +35,9 @@ namespace Troy_Web_Property_Manager.Controllers
         // What the residence modal refreshes when it saves. Has to match the root id in _ResidenceHistory.cshtml.
         private const string ResidenceHistoryTarget = "#residence-history";
 
+        // What the notes modal refreshes when it saves. Has to match the root id in Components/ManagerNotes/Default.cshtml.
+        private const string ManagerNotesTarget = "#manager-notes";
+
         // ---------------- List ----------------
 
         /// <summary>
@@ -311,6 +314,40 @@ namespace Troy_Web_Property_Manager.Controllers
                 return ModalSuccess(); // status, buttons and history all change, so reload the page
             }
             return ModalFailed("_ReviewForm", model, result);
+        }
+
+        // ---------------- Manager notes (modal, property managers only) ----------------
+        // Private notes applicants never see. Every action is locked to the Property Manager role, and the service
+        // checks the role again, so an applicant gets a 403 here and nothing back from the service either way.
+
+        /// <summary>Just the notes panel. site.js calls this to refresh that part of the page after a save.</summary>
+        [Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> ManagerNotes(int id)
+        {
+            var model = await applications.GetManagerNotesAsync(id, CurrentUser);
+            // Same markup the ManagerNotes view component renders on the page.
+            return model is null ? NotFound() : PartialView("Components/ManagerNotes/Default", model);
+        }
+
+        /// <summary>Notes form for the modal.</summary>
+        [Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> EditManagerNotes(int id)
+        {
+            var model = await applications.GetManagerNotesAsync(id, CurrentUser);
+            return model is null ? NotFound() : PartialView("_ManagerNotesForm", model);
+        }
+
+        /// <summary>Saves the notes. If another manager saved first, the modal says so (409) instead of overwriting.</summary>
+        [HttpPost, Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> EditManagerNotes(int id, ManagerNotesViewModel model)
+        {
+            model.ApplicationId = id;
+            if (!ModelState.IsValid) return ModalInvalid("_ManagerNotesForm", model);
+
+            var result = await applications.SaveManagerNotesAsync(id, model, CurrentUser);
+            if (IsAccessFailure(result)) return Failure(result);
+            if (result.Succeeded) return ModalSuccess(ManagerNotesTarget, Url.Action(nameof(ManagerNotes), new { id }));
+            return ModalFailed("_ManagerNotesForm", model, result);
         }
 
         private ConfirmViewModel ConfirmWithdraw(int id)
