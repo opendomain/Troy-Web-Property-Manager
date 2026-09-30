@@ -14,13 +14,14 @@ namespace Troy_Web_Property_Manager.Controllers
     [Authorize(Roles = AppRoles.Applicant)]
     public class UnitsController(PropertyService properties) : AppController
     {
-        public async Task<IActionResult> Index(int? propertyId)
+        public async Task<IActionResult> Index(int? propertyId, int? bedrooms)
         {
             return View(new AvailableUnitsPageViewModel
             {
                 PropertyId = propertyId,
+                Bedrooms = bedrooms,
                 Properties = await properties.GetPropertyOptionsAsync(propertyId),
-                Units = await properties.GetAvailableUnitsAsync(propertyId)
+                Units = await properties.GetAvailableUnitsAsync(propertyId, bedrooms)
             });
         }
     }
