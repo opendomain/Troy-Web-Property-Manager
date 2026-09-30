@@ -32,6 +32,8 @@ namespace Troy_Web_Property_Manager.Data
 
         public virtual DbSet<ApplicantInformation> ApplicantInformation { get; set; }
 
+        public virtual DbSet<ApplicationApplicant> ApplicationApplicants { get; set; }
+
         public virtual DbSet<ApplicationStatusHistory> ApplicationStatusHistories { get; set; }
 
         public virtual DbSet<Lease> Leases { get; set; }
@@ -100,6 +102,33 @@ namespace Troy_Web_Property_Manager.Data
                     .HasForeignKey(e => e.UserId)
                     .OnDelete(DeleteBehavior.SetNull)
                     .HasConstraintName("FK_Applicant_AspNetUsers");
+            });
+
+            // Who's on each application. Composite key, so an applicant can't be on the same application twice.
+            // Deleting an application takes its rows with it (applications are never deleted by the app anyway);
+            // deleting an applicant profile that's still on something is blocked.
+            modelBuilder.Entity<ApplicationApplicant>(entity =>
+            {
+                entity.ToTable("ApplicationApplicant");
+
+                entity.HasKey(e => new { e.RentalApplicationId, e.ApplicantId });
+                entity.Property(e => e.RentalApplicationId).HasColumnName("RentalApplicationID");
+                entity.Property(e => e.ApplicantId).HasColumnName("ApplicantID");
+                entity.Property(e => e.Added).HasColumnType("datetime");
+                entity.Property(e => e.AddedByUser).HasMaxLength(450);
+
+                // For "which applications is this applicant on" - the ownership filter runs this on every request.
+                entity.HasIndex(e => e.ApplicantId, "IX_ApplicationApplicant_ApplicantID");
+
+                entity.HasOne(d => d.RentalApplication).WithMany(p => p.ApplicationApplicants)
+                    .HasForeignKey(d => d.RentalApplicationId)
+                    .OnDelete(DeleteBehavior.Cascade)
+                    .HasConstraintName("FK_ApplicationApplicant_RentalApplications");
+
+                entity.HasOne(d => d.Applicant).WithMany(p => p.ApplicationApplicants)
+                    .HasForeignKey(d => d.ApplicantId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("FK_ApplicationApplicant_Applicant");
             });
 
             // One row per status change (5.c: who, when, comment). A review is really just a status change, so

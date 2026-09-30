@@ -7,6 +7,7 @@
 //                         data-refresh-target/url was saved with errors: it stays open and that region is redrawn.
 //     * JSON response  -> { success, refreshTarget, refreshUrl }: close the modal, then reload
 //                         refreshTarget from refreshUrl, or the whole page when no target is given.
+//                         { success, redirectUrl } goes to that page instead (AppController.ModalRedirect).
 // - Buttons with data-confirm ask before submitting.
 //
 // This is here for Technical 1.b: load modals from partial views the controllers return. If the form doesn't
@@ -112,6 +113,11 @@
     // The happy path: close the modal and refresh whatever changed. The server tells us which region (a CSS selector)
     // and the URL of a partial to redraw it, so only that part of the page updates.
     async function refresh(result) {
+        // AppController.ModalRedirect: this page can't be shown any more (e.g. the user left the application).
+        if (result.redirectUrl) {
+            window.location.assign(result.redirectUrl);
+            return;
+        }
         const target = result.refreshTarget && document.querySelector(result.refreshTarget);
         if (!target || !result.refreshUrl) {
             window.location.reload();

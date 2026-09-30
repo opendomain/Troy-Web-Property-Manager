@@ -26,6 +26,13 @@ namespace Troy_Web_Property_Manager.ViewModels
         /// <summary>Null when adding, the residence's id when editing.</summary>
         public int? ResidenceId { get; set; }
 
+        /// <summary>
+        /// Residence History's version when the modal was opened (hidden field). If another applicant on the
+        /// application saves the section in the meantime, this no longer matches and the save is rejected as stale
+        /// instead of overwriting theirs. Only a concurrency check - it grants nothing, so it's fine to bind.
+        /// </summary>
+        public Guid SectionVersion { get; set; }
+
         // Lengths match the Residence columns (nvarchar(50)).
         [Required, StringLength(50)] public string? Address { get; set; }
         [Required, StringLength(50), Display(Name = "Landlord name")] public string? LandlordName { get; set; }

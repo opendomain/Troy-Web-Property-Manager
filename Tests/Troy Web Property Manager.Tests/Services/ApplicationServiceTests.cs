@@ -65,6 +65,44 @@ namespace Troy_Web_Property_Manager.Tests.Services
             return new() { Outcome = outcome, Comment = comment };
         }
 
+        // ---------------- Section saves at the current version ----------------
+        // Most tests aren't about concurrency, so these save against whatever version is current - like a page that
+        // was just loaded. The concurrency tests call the service directly with the versions they want.
+
+        private async Task<(Guid Info, Guid History)> VersionsAsync(int id)
+        {
+            var versions = await _db.CreateContext().RentalApplications.Where(a => a.Id == id)
+                .Select(a => new { a.ApplicantInformationVersion, a.ResidenceHistoryVersion }).FirstOrDefaultAsync();
+            return versions is null ? (Guid.Empty, Guid.Empty) : (versions.ApplicantInformationVersion, versions.ResidenceHistoryVersion);
+        }
+
+        private async Task<ServiceResult> SaveInfoAsync(int id, ApplicantInformationViewModel model, CurrentUser user)
+        {
+            return await Service().SaveApplicantInformationAsync(id, model, (await VersionsAsync(id)).Info, user);
+        }
+
+        private async Task<ServiceResult> SaveHistoryAsync(int id, CurrentUser user)
+        {
+            return await Service().SaveResidenceHistoryAsync(id, (await VersionsAsync(id)).History, user);
+        }
+
+        private async Task<ServiceResult> SaveResidenceAsync(int id, ResidenceViewModel model, CurrentUser user)
+        {
+            model.SectionVersion = (await VersionsAsync(id)).History;
+            return await Service().SaveResidenceAsync(id, model, user);
+        }
+
+        private async Task<ServiceResult> DeleteResidenceAsync(int id, int residenceId, CurrentUser user)
+        {
+            return await Service().DeleteResidenceAsync(id, residenceId, (await VersionsAsync(id)).History, user);
+        }
+
+        private async Task<ServiceResult> SubmitAsync(int id, CurrentUser user)
+        {
+            var (info, history) = await VersionsAsync(id);
+            return await Service().SubmitAsync(id, info, history, user);
+        }
+
         private async Task<int> StartAsync(CurrentUser? user = null, int? unitId = null)
         {
             var result = await Service().StartAsync(unitId ?? _db.UnitId, user ?? ApplicantUser);
@@ -77,9 +115,9 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             user ??= ApplicantUser;
             var id = await StartAsync(user, unitId);
-            AssertOk(await Service().SaveApplicantInformationAsync(id, Info(), user));
-            AssertOk(await Service().SaveResidenceAsync(id, Residence(), user));
-            AssertOk(await Service().SaveResidenceHistoryAsync(id, user));
+            AssertOk(await SaveInfoAsync(id, Info(), user));
+            AssertOk(await SaveResidenceAsync(id, Residence(), user));
+            AssertOk(await SaveHistoryAsync(id, user));
             return id;
         }
 
@@ -87,7 +125,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             user ??= ApplicantUser;
             var id = await CompleteDraftAsync(user, unitId);
-            AssertOk(await Service().SubmitAsync(id, user));
+            AssertOk(await SubmitAsync(id, user));
             return id;
         }
 
@@ -158,10 +196,10 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var draft = await StartAsync();
             Assert.Equal(draft, await StartAsync());
 
-            AssertOk(await Service().SaveApplicantInformationAsync(draft, Info(), ApplicantUser));
-            AssertOk(await Service().SaveResidenceAsync(draft, Residence(), ApplicantUser));
-            AssertOk(await Service().SaveResidenceHistoryAsync(draft, ApplicantUser));
-            AssertOk(await Service().SubmitAsync(draft, ApplicantUser));
+            AssertOk(await SaveInfoAsync(draft, Info(), ApplicantUser));
+            AssertOk(await SaveResidenceAsync(draft, Residence(), ApplicantUser));
+            AssertOk(await SaveHistoryAsync(draft, ApplicantUser));
+            AssertOk(await SubmitAsync(draft, ApplicantUser));
             Assert.Equal(draft, await StartAsync());
 
             Assert.Equal(1, await _db.CreateContext().RentalApplications.CountAsync());
@@ -267,7 +305,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         public async Task GetEditor_NewApplication_IsPrefilledFromLastSavedDetails()
         {
             var first = await StartAsync(unitId: _db.UnitId);
-            AssertOk(await Service().SaveApplicantInformationAsync(first, Info("first@example.com"), ApplicantUser));
+            AssertOk(await SaveInfoAsync(first, Info("first@example.com"), ApplicantUser));
 
             var second = await StartAsync(unitId: _db.SecondUnitId);
             var editor = await Service().GetEditorAsync(second, null, ApplicantUser);
@@ -281,7 +319,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var submitted = await SubmittedAsync(unitId: _db.UnitId);
             var draft = await StartAsync(unitId: _db.SecondUnitId);
-            AssertOk(await Service().SaveApplicantInformationAsync(draft, Info("changed@example.com"), ApplicantUser));
+            AssertOk(await SaveInfoAsync(draft, Info("changed@example.com"), ApplicantUser));
 
             // The submitted application keeps exactly what was submitted.
             Assert.Equal("alex@example.com", (await LoadAsync(submitted)).ApplicantInformation!.Email);
@@ -295,7 +333,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var id = await StartAsync();
 
-            var result = await Service().SaveResidenceHistoryAsync(id, ApplicantUser);
+            var result = await SaveHistoryAsync(id, ApplicantUser);
 
             AssertOk(result);
             var error = Assert.Single(result.Unresolved);
@@ -318,7 +356,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var id = await StartAsync();
 
-            var result = await Service().SaveApplicantInformationAsync(id, BadInfo(), ApplicantUser);
+            var result = await SaveInfoAsync(id, BadInfo(), ApplicantUser);
 
             AssertOk(result);
             Assert.Equal(new[] { "Email", "Name", "Phone" }, result.Unresolved.Select(e => e.Field).Order());
@@ -332,7 +370,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         public async Task Editor_PutsSavedErrorsOnTheirFields_AndSummaryListsThem()
         {
             var id = await StartAsync();
-            AssertOk(await Service().SaveApplicantInformationAsync(id, BadInfo(), ApplicantUser));
+            AssertOk(await SaveInfoAsync(id, BadInfo(), ApplicantUser));
 
             var editor = await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser);
 
@@ -349,22 +387,22 @@ namespace Troy_Web_Property_Manager.Tests.Services
         public async Task Submit_IsBlockedWhileAnyErrorRemains_ThenWorksOnceFixed()
         {
             var id = await CompleteDraftAsync();
-            AssertOk(await Service().SaveApplicantInformationAsync(id, BadInfo(), ApplicantUser));
+            AssertOk(await SaveInfoAsync(id, BadInfo(), ApplicantUser));
 
-            var result = await Service().SubmitAsync(id, ApplicantUser);
+            var result = await SubmitAsync(id, ApplicantUser);
             AssertError(result, "Applicant information:");
             Assert.Equal((long)ApplicationStatus.Draft, (await LoadAsync(id)).Status);
 
-            AssertOk(await Service().SaveApplicantInformationAsync(id, Info(), ApplicantUser));
-            AssertOk(await Service().SubmitAsync(id, ApplicantUser));
+            AssertOk(await SaveInfoAsync(id, Info(), ApplicantUser));
+            AssertOk(await SubmitAsync(id, ApplicantUser));
         }
 
         [Fact]
         public async Task SaveApplicantInformation_WithErrors_DoesNotOverwriteTheProfileUsedForPrefill()
         {
             var first = await StartAsync(unitId: _db.UnitId);
-            AssertOk(await Service().SaveApplicantInformationAsync(first, Info("good@example.com"), ApplicantUser));
-            AssertOk(await Service().SaveApplicantInformationAsync(first, BadInfo(), ApplicantUser));
+            AssertOk(await SaveInfoAsync(first, Info("good@example.com"), ApplicantUser));
+            AssertOk(await SaveInfoAsync(first, BadInfo(), ApplicantUser));
 
             var second = await StartAsync(unitId: _db.SecondUnitId);
             Assert.Equal("good@example.com", (await Service().GetEditorAsync(second, null, ApplicantUser))!.ApplicantInformation.Email);
@@ -377,7 +415,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var info = Info();
             info.Name = new string('x', 51);
 
-            var result = await Service().SaveApplicantInformationAsync(id, info, ApplicantUser);
+            var result = await SaveInfoAsync(id, info, ApplicantUser);
 
             Assert.False(result.Succeeded);
             Assert.True(result.Errors.ContainsKey("Name"));
@@ -393,7 +431,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             residence.MoveInDate = new DateOnly(2025, 1, 1); // after the move-out date
             residence.MoveOutDate = new DateOnly(2024, 1, 1);
 
-            var result = await Service().SaveResidenceAsync(id, residence, ApplicantUser);
+            var result = await SaveResidenceAsync(id, residence, ApplicantUser);
 
             AssertOk(result);
             Assert.NotEqual(0, result.Id);
@@ -403,7 +441,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             residence.ResidenceId = result.Id;
             residence.LandlordPhone = "518-555-0199";
             residence.MoveOutDate = new DateOnly(2025, 6, 1);
-            var fixedResult = await Service().SaveResidenceAsync(id, residence, ApplicantUser);
+            var fixedResult = await SaveResidenceAsync(id, residence, ApplicantUser);
             AssertOk(fixedResult);
             Assert.Empty(fixedResult.Unresolved);
             Assert.Single(_db.CreateContext().Residences.Where(r => r.RentalApplicationId == id));
@@ -414,7 +452,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var id = await StartAsync();
 
-            var result = await Service().SaveResidenceAsync(id, new ResidenceViewModel { Address = "5 Elm St" }, ApplicantUser);
+            var result = await SaveResidenceAsync(id, new ResidenceViewModel { Address = "5 Elm St" }, ApplicantUser);
 
             AssertOk(result);
             Assert.Contains(result.Unresolved, e => e.Field == nameof(ResidenceViewModel.MoveInDate));
@@ -430,7 +468,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await CompleteDraftAsync();
             var residence = Residence();
             residence.LandlordName = null;
-            var residenceId = (await Service().SaveResidenceAsync(id, residence, ApplicantUser)).Id;
+            var residenceId = (await SaveResidenceAsync(id, residence, ApplicantUser)).Id;
 
             var editor = await Service().GetEditorAsync(id, ApplicationSection.ResidenceHistory, ApplicantUser);
             var row = editor!.Residences.Single(r => r.ResidenceId == residenceId);
@@ -438,7 +476,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Contains(editor.SubmitBlockers, b => b.StartsWith("Residence history: 5 Elm St - ") && b.Contains("Landlord name"));
             Assert.Equal(nameof(ResidenceViewModel.LandlordName),
                 Assert.Single((await Service().GetResidenceAsync(id, residenceId, ApplicantUser))!.Errors).Field);
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), "Landlord name");
+            AssertError(await SubmitAsync(id, ApplicantUser), "Landlord name");
         }
 
         [Fact]
@@ -447,9 +485,9 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await StartAsync();
             var residence = Residence();
             residence.LandlordPhone = null;
-            AssertOk(await Service().SaveResidenceAsync(id, residence, ApplicantUser));
+            AssertOk(await SaveResidenceAsync(id, residence, ApplicantUser));
 
-            var result = await Service().SaveResidenceHistoryAsync(id, ApplicantUser);
+            var result = await SaveHistoryAsync(id, ApplicantUser);
 
             AssertOk(result);
             Assert.Equal(nameof(ResidenceViewModel.LandlordPhone), Assert.Single(result.Unresolved).Field);
@@ -485,7 +523,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         public async Task SaveResidence_OnOtherApplicantsApplication_IsNotFound()
         {
             var id = await StartAsync();
-            Assert.True((await Service().SaveResidenceAsync(id, Residence(), OtherApplicantUser)).NotFound);
+            Assert.True((await SaveResidenceAsync(id, Residence(), OtherApplicantUser)).NotFound);
         }
 
         [Fact]
@@ -494,19 +532,19 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await CompleteDraftAsync();
             var residenceId = (await Service().GetEditorAsync(id, null, ApplicantUser))!.Residences.Single().ResidenceId!.Value;
 
-            AssertOk(await Service().DeleteResidenceAsync(id, residenceId, ApplicantUser));
+            AssertOk(await DeleteResidenceAsync(id, residenceId, ApplicantUser));
 
             Assert.True((await LoadAsync(id)).ResidenceHistorySaved);
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.NoResidences);
+            AssertError(await SubmitAsync(id, ApplicantUser), SubmissionRules.NoResidences);
         }
 
         [Fact]
         public async Task Submit_BeforeBothSectionsSaved_IsRejected()
         {
             var id = await StartAsync();
-            AssertOk(await Service().SaveApplicantInformationAsync(id, Info(), ApplicantUser));
+            AssertOk(await SaveInfoAsync(id, Info(), ApplicantUser));
 
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.ResidenceHistoryNotSaved);
+            AssertError(await SubmitAsync(id, ApplicantUser), SubmissionRules.ResidenceHistoryNotSaved);
         }
 
         [Fact]
@@ -527,7 +565,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await CompleteDraftAsync();
             await LeaseUnitAsync(_db.UnitId);
 
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.UnitLeased);
+            AssertError(await SubmitAsync(id, ApplicantUser), SubmissionRules.UnitLeased);
             // The Summary shows the same reason and keeps Submit disabled.
             var editor = (await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser))!;
             Assert.Equal([SubmissionRules.UnitLeased], editor.SubmitBlockers);
@@ -539,9 +577,9 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var id = await SubmittedAsync();
 
-            AssertError(await Service().SaveApplicantInformationAsync(id, Info(), ApplicantUser), "can no longer be edited");
-            AssertError(await Service().SaveResidenceAsync(id, Residence(), ApplicantUser), "can no longer be edited");
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), "can no longer be edited");
+            AssertError(await SaveInfoAsync(id, Info(), ApplicantUser), "can no longer be edited");
+            AssertError(await SaveResidenceAsync(id, Residence(), ApplicantUser), "can no longer be edited");
+            AssertError(await SubmitAsync(id, ApplicantUser), "can no longer be edited");
         }
 
         [Fact]
@@ -549,7 +587,9 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var id = await CompleteDraftAsync();
 
-            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted)).SaveResidenceAsync(id, Residence(), ApplicantUser);
+            var residence = Residence();
+            residence.SectionVersion = (await VersionsAsync(id)).History;
+            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted)).SaveResidenceAsync(id, residence, ApplicantUser);
 
             Assert.True(result.Conflict);
             Assert.Single(_db.CreateContext().Residences.Where(r => r.RentalApplicationId == id));
@@ -562,7 +602,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await CompleteDraftAsync();
 
             var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted))
-                .SaveApplicantInformationAsync(id, Info("changed@example.com"), ApplicantUser);
+                .SaveApplicantInformationAsync(id, Info("changed@example.com"), (await VersionsAsync(id)).Info, ApplicantUser);
 
             Assert.True(result.Conflict);
             Assert.NotEqual("changed@example.com", _db.CreateContext().ApplicantInformation.Single(i => i.RentalApplicationId == id).Email);
@@ -572,10 +612,11 @@ namespace Troy_Web_Property_Manager.Tests.Services
         public async Task DeleteResidence_WhenSubmittedConcurrently_IsRejected()
         {
             var id = await CompleteDraftAsync();
-            AssertOk(await Service().SaveResidenceAsync(id, Residence(), ApplicantUser));
+            AssertOk(await SaveResidenceAsync(id, Residence(), ApplicantUser));
             var residenceId = (await Service().GetEditorAsync(id, null, ApplicantUser))!.Residences.First().ResidenceId!.Value;
 
-            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted)).DeleteResidenceAsync(id, residenceId, ApplicantUser);
+            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted))
+                .DeleteResidenceAsync(id, residenceId, (await VersionsAsync(id)).History, ApplicantUser);
 
             Assert.True(result.Conflict);
             Assert.Equal(2, _db.CreateContext().Residences.Count(r => r.RentalApplicationId == id));
@@ -685,7 +726,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Equal("Add a second reference.", editor.ReviewComment);
             Assert.True(editor.CanEdit);
             Assert.True(editor.CanSubmit); // both sections are still saved, so it can be resubmitted as is
-            AssertOk(await Service().SubmitAsync(id, ApplicantUser));
+            AssertOk(await SubmitAsync(id, ApplicantUser));
 
             // Resubmitted, it goes back in the queue unclaimed.
             var application = await LoadAsync(id);
@@ -962,7 +1003,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var newerWaiting = await SubmittedAsync(ApplicantUser, _db.SecondUnitId);
             var mine = await ClaimedAsync(OtherApplicantUser, _db.UnitId, ManagerUser);
             var theirs = await ClaimedAsync(OtherApplicantUser, _db.SecondUnitId, OtherManagerUser);
-            var decided = await ClaimedAsync(await NewApplicantAsync("applicant-3"), _db.UnitId);
+            var decided = await ClaimedAsync(ThirdApplicantUser, _db.UnitId);
             AssertOk(await Service().ReviewAsync(decided, Review(ReviewOutcome.Deny, "No."), ManagerUser));
 
             var queue = await Service().GetQueueAsync(ManagerUser);
@@ -992,15 +1033,6 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Empty(queue.Mine);
             Assert.Empty(queue.Waiting);
             Assert.Empty(queue.ClaimedByOthers);
-        }
-
-        /// <summary>A third applicant login, for tests that need more open applications than two applicants allow.</summary>
-        private async Task<CurrentUser> NewApplicantAsync(string id)
-        {
-            var db = _db.CreateContext();
-            db.Users.Add(new Microsoft.AspNetCore.Identity.IdentityUser { Id = id, UserName = $"{id}@example.com", Email = $"{id}@example.com" });
-            await db.SaveChangesAsync();
-            return new CurrentUser(id, IsManager: false);
         }
 
         // ---------------- Manager notes ----------------

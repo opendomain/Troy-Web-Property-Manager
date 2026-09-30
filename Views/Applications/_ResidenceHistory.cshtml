@@ -17,6 +17,10 @@
     while the applicant can still edit, so managers never see them.
 *@
 <div id="residence-history">
+    @* Residence History's version as of this render. It's in here, not in Edit.cshtml, so when a residence modal saves
+       and this part is redrawn, the version is current too - otherwise this applicant's own residence saves would make
+       their Continue or Submit look stale. *@
+    <input type="hidden" asp-for="ResidenceHistoryVersion" />
     <div class="d-flex justify-content-between align-items-center">
         <h4>Residence history</h4>
         @if (!Model.IsReadOnly)

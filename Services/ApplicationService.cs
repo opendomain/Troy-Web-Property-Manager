@@ -30,6 +30,11 @@ namespace Troy_Web_Property_Manager.Services
     /// <see cref="CheckSections"/> runs each section's rules against what's saved and turns the result into field
     /// errors for the page and the one list of submit blockers - the editor and <see cref="SubmitAsync"/> both use it,
     /// so what the Summary says and what Submit enforces can't drift apart.</para>
+    /// <para>An application can have several applicants, and any of them can edit it - so two of them can be saving at
+    /// once. Each section has its own version; <see cref="SaveSectionsAsync"/> swaps it for a new one only if it still
+    /// matches the version the page was loaded with, in the same transaction as the save. Saves to different sections
+    /// never touch each other's version, so they don't interfere; a second save to the same section finds the version
+    /// changed and is rejected as stale.</para>
     /// </remarks>
     public class ApplicationService(ApplicationDbContext db)
     {
@@ -39,17 +44,33 @@ namespace Troy_Web_Property_Manager.Services
         /// <summary>Key for Residence History's section-level error (no residences).</summary>
         public const string ResidencesKey = nameof(ApplicationEditorViewModel.Residences);
 
+        /// <summary>What a stale section save says: someone else (another applicant on it) saved it first.</summary>
+        public const string SectionChangedMessage =
+            "Someone else saved this section after you opened it. Reload the page to see their changes, then try again.";
+
+        /// <summary>What a stale Submit says: a section changed after the Summary was loaded.</summary>
+        public const string ChangedBeforeSubmitMessage =
+            "This application was changed by someone else after you opened the Summary. Reload the page and check it before submitting.";
+
+        /// <summary>Statuses that count as an open application (the ones the unique index covers).</summary>
+        private static readonly long[] OpenStatuses =
+        [
+            (long)ApplicationStatus.Draft, (long)ApplicationStatus.Submitted,
+            (long)ApplicationStatus.Returned, (long)ApplicationStatus.UnderReview
+        ];
+
         /// <summary>
         /// Who can see what, in one spot: managers see every application that has been submitted at least once,
-        /// applicants only their own. A draft that was never submitted is still private to the applicant. Every query
-        /// that touches an application starts here so no method can forget the ownership check. It returns an
-        /// <see cref="IQueryable{T}"/>, so the filter ends up in the SQL WHERE clause.
+        /// applicants only the ones they're on - whether they started it or were added to it. A draft that was never
+        /// submitted is still private to its applicants. Every query that touches an application starts here so no
+        /// method can forget the ownership check. It returns an <see cref="IQueryable{T}"/>, so the filter ends up in
+        /// the SQL WHERE clause.
         /// </summary>
         private IQueryable<RentalApplication> Visible(CurrentUser user)
         {
             return user.IsManager
                 ? db.RentalApplications.Where(a => a.Submitted != null)
-                : db.RentalApplications.Where(a => a.Applicant.UserId == user.Id);
+                : db.RentalApplications.Where(a => a.ApplicationApplicants.Any(m => m.Applicant.UserId == user.Id));
         }
 
         /// <summary>
@@ -111,41 +132,34 @@ namespace Troy_Web_Property_Manager.Services
             if (user.IsManager) return ServiceResult.Forbid("Only applicants can apply for a unit.");
             if (!await db.Units.AnyAsync(u => u.Id == unitId)) return ServiceResult.Missing();
 
-            // Already applied for this unit? Reopen that one instead of making a duplicate.
+            // Already on an open application for this unit (one they started, or one they were added to)? Reopen
+            // that one instead of making a duplicate.
             var openId = await db.RentalApplications
-                .Where(a => a.UnitId == unitId && a.Applicant.UserId == user.Id
-                    && (a.Status == (long)ApplicationStatus.Draft || a.Status == (long)ApplicationStatus.Submitted
-                        || a.Status == (long)ApplicationStatus.Returned || a.Status == (long)ApplicationStatus.UnderReview))
+                .Where(a => a.UnitId == unitId && OpenStatuses.Contains(a.Status)
+                    && a.ApplicationApplicants.Any(m => m.Applicant.UserId == user.Id))
                 .Select(a => (int?)a.Id)
                 .FirstOrDefaultAsync();
             if (openId is int existing) return ServiceResult.Ok(existing);
 
             if (await UnitHasActiveLeaseAsync(unitId)) return ServiceResult.Error("This unit is not available.");
 
-            // One profile per user (unique index on UserId) - create it on their first application.
-            // It holds their latest details, which we only use to pre-fill section 1 on new applications.
-            var applicant = await db.Applicants.FirstOrDefaultAsync(a => a.UserId == user.Id);
-            if (applicant is null)
-            {
-                var email = await db.Users.Where(u => u.Id == user.Id).Select(u => u.Email).FirstOrDefaultAsync();
-                applicant = new Applicant
-                {
-                    UserId = user.Id,
-                    Name = "",
-                    Phone = "",
-                    Email = email is { Length: <= 50 } ? email : "",
-                    CurrentAddress = ""
-                };
-                db.Applicants.Add(applicant);
-            }
-
+            var applicant = await GetOrCreateProfileAsync(user.Id);
             var application = new RentalApplication
             {
                 UnitId = unitId,
                 Applicant = applicant,
                 Status = (long)ApplicationStatus.Draft,
-                Created = DateTime.Now
+                Created = DateTime.Now,
+                ApplicantInformationVersion = Guid.NewGuid(),
+                ResidenceHistoryVersion = Guid.NewGuid()
             };
+            // The starter is on it like anyone added later, so the ownership check only has one thing to look at.
+            application.ApplicationApplicants.Add(new ApplicationApplicant
+            {
+                Applicant = applicant,
+                Added = application.Created,
+                AddedByUser = user.Id
+            });
 
             // First history row: who created it and when (5.c). PreviousStatus stays 0 ("none"), which the history
             // panel shows as "Created".
@@ -159,6 +173,29 @@ namespace Troy_Web_Property_Manager.Services
             db.RentalApplications.Add(application);
             await db.SaveChangesAsync();
             return ServiceResult.Ok(application.Id);
+        }
+
+        /// <summary>
+        /// The user's applicant profile, created (blank, with their login email) if they don't have one yet - on their
+        /// first application, or the first time someone adds them to one. One per user (unique index on UserId). It
+        /// holds their latest details, which we only use to pre-fill section 1 on applications they start.
+        /// </summary>
+        private async Task<Applicant> GetOrCreateProfileAsync(string userId)
+        {
+            var applicant = await db.Applicants.FirstOrDefaultAsync(a => a.UserId == userId);
+            if (applicant is not null) return applicant;
+
+            var email = await db.Users.Where(u => u.Id == userId).Select(u => u.Email).FirstOrDefaultAsync();
+            applicant = new Applicant
+            {
+                UserId = userId,
+                Name = "",
+                Phone = "",
+                Email = email is { Length: <= 50 } ? email : "",
+                CurrentAddress = ""
+            };
+            db.Applicants.Add(applicant);
+            return applicant;
         }
 
         /// <summary>
@@ -207,6 +244,27 @@ namespace Troy_Web_Property_Manager.Services
                     .FirstOrDefaultAsync();
             }
 
+            // Everyone on it, starter first. Left join to AspNetUsers for their login email; if the login is gone, fall
+            // back to the profile's email.
+            var members = await (
+                from m in db.ApplicationApplicants.AsNoTracking()
+                where m.RentalApplicationId == id
+                join u in db.Users on m.Applicant.UserId equals u.Id into users
+                from u in users.DefaultIfEmpty()
+                orderby m.Added, m.ApplicantId
+                select new { m.ApplicantId, m.Applicant.UserId, Email = u != null ? u.Email : m.Applicant.Email })
+                .ToListAsync();
+            var applicants = members
+                .Select(m => new ApplicationApplicantViewModel
+                {
+                    ApplicantId = m.ApplicantId,
+                    Email = string.IsNullOrEmpty(m.Email) ? "(no email)" : m.Email,
+                    IsStarter = m.ApplicantId == application.ApplicantId,
+                    IsYou = m.UserId == user.Id
+                })
+                .OrderByDescending(m => m.IsStarter)
+                .ToList();
+
             // Who has it claimed, for managers only. Applicants just see "Under Review", not who's reviewing it.
             string? reviewer = null;
             if (user.IsManager && application.ReviewerUser is not null)
@@ -231,6 +289,9 @@ namespace Troy_Web_Property_Manager.Services
                 Residences = checks?.Residences ?? OrderedResidences(application).Select(r => ToViewModel(r, withErrors: false)).ToList(),
                 ApplicantInformationSaved = application.ApplicantInformationSaved,
                 ResidenceHistorySaved = application.ResidenceHistorySaved,
+                ApplicantInformationVersion = application.ApplicantInformationVersion,
+                ResidenceHistoryVersion = application.ResidenceHistoryVersion,
+                Applicants = applicants,
                 SubmitBlockers = checks?.Blockers ?? [],
                 ApplicantInformationErrors = checks?.ApplicantInformation ?? [],
                 ResidenceHistoryErrors = checks?.ResidenceHistory ?? [],
@@ -251,7 +312,9 @@ namespace Troy_Web_Property_Manager.Services
         /// until they're fixed. Only text too long for its column stops the save. We re-check ownership and status
         /// here, so a post against an already-submitted application gets turned away (4.d).
         /// </summary>
-        public async Task<ServiceResult> SaveApplicantInformationAsync(int id, ApplicantInformationViewModel model, CurrentUser user)
+        /// <param name="version">The section's version when the page was loaded. If another applicant saved the section
+        /// since, nothing is saved and the result is stale.</param>
+        public async Task<ServiceResult> SaveApplicantInformationAsync(int id, ApplicantInformationViewModel model, Guid version, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
@@ -267,16 +330,17 @@ namespace Troy_Web_Property_Manager.Services
 
             // Check what was actually saved (trimmed), not what was posted.
             var remaining = SectionValidator.Validate(ToViewModel(info));
-            if (remaining.Count == 0)
+            if (remaining.Count == 0 && application.Applicant.UserId == user.Id)
             {
-                // Remember these details to pre-fill their next application - but only once they're valid, so a
-                // half-finished section doesn't get copied into the next one.
+                // Remember these details to pre-fill the starter's next application - but only once they're valid, so
+                // a half-finished section doesn't get copied into the next one. Only when the starter saves it: the
+                // section pre-fills from the starter's profile, and another applicant on it shouldn't rewrite that.
                 var defaults = application.Applicant;
                 (defaults.Name, defaults.Phone, defaults.Email, defaults.CurrentAddress) = (info.Name, info.Phone, info.Email, info.CurrentAddress);
             }
             // If section 1 was already saved, the application row itself doesn't change, so force the status check.
             GuardStatus(application);
-            var saved = await SaveApplicationAsync();
+            var (saved, _) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ApplicantInformation, version));
             return saved.Succeeded ? ServiceResult.Saved(remaining) : saved;
         }
 
@@ -285,13 +349,14 @@ namespace Troy_Web_Property_Manager.Services
         /// section saved - even with no residences, or residences that still have errors. Those come back in
         /// <see cref="ServiceResult.Unresolved"/> and block Submit until they're fixed.
         /// </summary>
-        public async Task<ServiceResult> SaveResidenceHistoryAsync(int id, CurrentUser user)
+        /// <param name="version">The section's version when the page was loaded (see <see cref="SaveApplicantInformationAsync"/>).</param>
+        public async Task<ServiceResult> SaveResidenceHistoryAsync(int id, Guid version, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
             application!.ResidenceHistorySaved = true;
             GuardStatus(application);
-            var saved = await SaveApplicationAsync();
+            var (saved, _) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ResidenceHistory, version));
             if (!saved.Succeeded) return saved;
 
             var checks = CheckSections(application, unitHasActiveLease: false);
@@ -302,18 +367,25 @@ namespace Troy_Web_Property_Manager.Services
         /// Gets one residence for the edit modal. We go through <see cref="Visible"/> and then to that application's
         /// residences, so a residence id from someone else's application just comes back empty.
         /// </summary>
-        /// <remarks>It comes with its rule errors, so the modal can show what still needs fixing.</remarks>
+        /// <remarks>It comes with its rule errors, so the modal can show what still needs fixing, and the section's
+        /// current version, so saving it is rejected if another applicant saves the section while it's open.</remarks>
         public async Task<ResidenceViewModel?> GetResidenceAsync(int id, int residenceId, CurrentUser user)
         {
-            var residence = await Visible(user).AsNoTracking().Where(a => a.Id == id).SelectMany(a => a.Residences)
-                .FirstOrDefaultAsync(r => r.Id == residenceId);
-            return residence is null ? null : ToViewModel(residence, withErrors: true);
+            var found = await Visible(user).AsNoTracking().Where(a => a.Id == id)
+                .Select(a => new { a.ResidenceHistoryVersion, Residence = a.Residences.FirstOrDefault(r => r.Id == residenceId) })
+                .FirstOrDefaultAsync();
+            if (found?.Residence is null) return null;
+            var model = ToViewModel(found.Residence, withErrors: true);
+            model.SectionVersion = found.ResidenceHistoryVersion;
+            return model;
         }
 
         /// <summary>
         /// Adds or edits a residence from the modal (4.c). Only while the application can still be edited. It saves
         /// even if it breaks the residence rules - the result carries the new residence's id and whatever errors are
-        /// left, so the modal can stay open on the saved residence and show them.
+        /// left, so the modal can stay open on the saved residence and show them. Adding or editing a residence is a
+        /// save to Residence History, so it's checked against <see cref="ResidenceViewModel.SectionVersion"/>, and the
+        /// result carries the section's new version for the modal to use next.
         /// </summary>
         public async Task<ServiceResult> SaveResidenceAsync(int id, ResidenceViewModel model, CurrentUser user)
         {
@@ -333,12 +405,16 @@ namespace Troy_Web_Property_Manager.Services
             residence.MoveOutDate = model.MoveOutDate;
             if (model.ResidenceId is null) application!.Residences.Add(residence);
             GuardStatus(application!);
-            var saved = await SaveApplicationAsync();
-            return saved.Succeeded ? ServiceResult.Saved(SectionValidator.Validate(ToViewModel(residence)), residence.Id) : saved;
+            var (saved, next) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ResidenceHistory, model.SectionVersion));
+            return saved.Succeeded ? ServiceResult.Saved(SectionValidator.Validate(ToViewModel(residence)), residence.Id, next) : saved;
         }
 
-        /// <summary>Removes a residence from the modal (4.c). Only while the application can still be edited.</summary>
-        public async Task<ServiceResult> DeleteResidenceAsync(int id, int residenceId, CurrentUser user)
+        /// <summary>
+        /// Removes a residence from the modal (4.c). Only while the application can still be edited. It's a save to
+        /// Residence History, so it's rejected as stale if another applicant saved the section since
+        /// <paramref name="version"/> was loaded.
+        /// </summary>
+        public async Task<ServiceResult> DeleteResidenceAsync(int id, int residenceId, Guid version, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
@@ -349,14 +425,19 @@ namespace Troy_Web_Property_Manager.Services
             // If that was the last one, the section stays saved but now has the "add at least one" error, which blocks
             // Submit (see CheckSections).
             GuardStatus(application);
-            return await SaveApplicationAsync();
+            var (saved, _) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ResidenceHistory, version));
+            return saved;
         }
 
         /// <summary>
         /// Submit from the Summary (Challenge a; 4.b.ii). Also handles resubmitting a Returned application once it's
         /// been fixed - Returned is editable, and Returned → Submitted is allowed.
         /// </summary>
-        public async Task<ServiceResult> SubmitAsync(int id, CurrentUser user)
+        /// <remarks>
+        /// The Summary posts both sections' versions. If another applicant saved either section after the Summary was
+        /// loaded, it isn't submitted - they'd be submitting changes they haven't seen.
+        /// </remarks>
+        public async Task<ServiceResult> SubmitAsync(int id, Guid applicantInformationVersion, Guid residenceHistoryVersion, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
@@ -370,6 +451,86 @@ namespace Troy_Web_Property_Manager.Services
             }
             ChangeStatus(application, ApplicationStatus.Submitted, user);
             application.Submitted = DateTime.Now;
+            var (saved, _) = await SaveSectionsAsync(id, ChangedBeforeSubmitMessage,
+                (ApplicationSection.ApplicantInformation, applicantInformationVersion),
+                (ApplicationSection.ResidenceHistory, residenceHistoryVersion));
+            return saved;
+        }
+
+        // ---------------- Applicants on an application ----------------
+
+        /// <summary>
+        /// Adds another applicant to the application by their login email. Any applicant already on it can do this,
+        /// while it can still be edited. The new applicant can then view and edit it like everyone else.
+        /// </summary>
+        /// <remarks>
+        /// It has to be an existing account in the Applicant role (managers can't be added). An applicant can only be on
+        /// one open application per unit - the same rule Start follows - so someone who already has an open
+        /// application for this unit can't be added to this one too.
+        /// </remarks>
+        public async Task<ServiceResult> AddApplicantAsync(int id, AddApplicantViewModel model, CurrentUser user)
+        {
+            const string field = nameof(AddApplicantViewModel.Email);
+            var (application, error) = await LoadEditableAsync(id, user);
+            if (error is not null) return error;
+
+            // Identity stores emails upper-cased in NormalizedEmail, so this matches however it was typed.
+            var normalized = (model.Email ?? "").Trim().ToUpperInvariant();
+            var userId = await (
+                from u in db.Users
+                where u.NormalizedEmail == normalized
+                    && db.UserRoles.Any(ur => ur.UserId == u.Id && db.Roles.Any(r => r.Id == ur.RoleId && r.Name == AppRoles.Applicant))
+                select u.Id).FirstOrDefaultAsync();
+            if (userId is null) return ServiceResult.Error("There's no applicant account with that email.", field);
+
+            if (await db.ApplicationApplicants.AnyAsync(m => m.RentalApplicationId == id && m.Applicant.UserId == userId))
+            {
+                return ServiceResult.Error("They're already on this application.", field);
+            }
+            var hasOtherOpen = await db.RentalApplications.AnyAsync(a => a.Id != id && a.UnitId == application!.UnitId
+                && OpenStatuses.Contains(a.Status) && a.ApplicationApplicants.Any(m => m.Applicant.UserId == userId));
+            if (hasOtherOpen) return ServiceResult.Error("They already have an open application for this unit.", field);
+
+            application!.ApplicationApplicants.Add(new ApplicationApplicant
+            {
+                Applicant = await GetOrCreateProfileAsync(userId),
+                Added = DateTime.Now,
+                AddedByUser = user.Id
+            });
+            // The application row doesn't change otherwise, so force the status check: no adding to one that was just
+            // submitted.
+            GuardStatus(application);
+            try
+            {
+                return await SaveApplicationAsync();
+            }
+            catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
+            {
+                // Someone added them (or created their profile) at the same moment.
+                db.ChangeTracker.Clear();
+                return ServiceResult.Stale();
+            }
+        }
+
+        /// <summary>
+        /// Takes an applicant off the application - another applicant, or yourself (leaving it). Any applicant on it
+        /// can do this while it can still be edited. The applicant who started it can't be removed. Once removed, they
+        /// get a 404 on it like on anyone else's application.
+        /// </summary>
+        public async Task<ServiceResult> RemoveApplicantAsync(int id, int applicantId, CurrentUser user)
+        {
+            var (application, error) = await LoadEditableAsync(id, user);
+            if (error is not null) return error;
+            if (applicantId == application!.ApplicantId)
+            {
+                return ServiceResult.Error("The applicant who started this application can't be removed.");
+            }
+            var membership = await db.ApplicationApplicants
+                .FirstOrDefaultAsync(m => m.RentalApplicationId == id && m.ApplicantId == applicantId);
+            if (membership is null) return ServiceResult.Missing();
+
+            db.ApplicationApplicants.Remove(membership);
+            GuardStatus(application);
             return await SaveApplicationAsync();
         }
 
@@ -702,6 +863,48 @@ namespace Troy_Web_Property_Manager.Services
                 Status = (ApplicationStatus)a.Status,
                 SubmittedAt = a.Submitted
             }).ToListAsync();
+        }
+
+        // ---------------- Section versions ----------------
+
+        /// <summary>
+        /// Saves the tracked changes for one or more sections, but only if each section's version still matches what
+        /// the page was loaded with. Returns the result and the sections' new version.
+        /// </summary>
+        /// <remarks>
+        /// <para>For each section, one <c>UPDATE ... SET Version = new WHERE id = @id AND Version = @expected</c>
+        /// (a compare-and-swap). If it matches no row, someone else saved that section since this page loaded: we
+        /// roll back and return <paramref name="staleMessage"/>. Otherwise the tracked changes are saved and it all
+        /// commits together, so a save and its version change can't be separated.</para>
+        /// <para>Each section only swaps its own version column, so a save to Applicant Information and a save to
+        /// Residence History at the same time both go through (they briefly queue on the row lock, then both
+        /// commit). The Status concurrency token still guards against the application being submitted, withdrawn or
+        /// reviewed in the meantime.</para>
+        /// </remarks>
+        private async Task<(ServiceResult Result, Guid Version)> SaveSectionsAsync(int id, string staleMessage,
+            params (ApplicationSection Section, Guid Expected)[] sections)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var next = Guid.NewGuid();
+            foreach (var (section, expected) in sections)
+            {
+                var swapped = section == ApplicationSection.ApplicantInformation
+                    ? await db.RentalApplications.Where(a => a.Id == id && a.ApplicantInformationVersion == expected)
+                        .ExecuteUpdateAsync(set => set.SetProperty(a => a.ApplicantInformationVersion, next))
+                    : await db.RentalApplications.Where(a => a.Id == id && a.ResidenceHistoryVersion == expected)
+                        .ExecuteUpdateAsync(set => set.SetProperty(a => a.ResidenceHistoryVersion, next));
+                if (swapped == 0)
+                {
+                    // Nothing's committed yet; disposing the transaction rolls back any swap already done.
+                    db.ChangeTracker.Clear();
+                    return (ServiceResult.Stale(staleMessage), Guid.Empty);
+                }
+            }
+
+            var saved = await SaveApplicationAsync();
+            if (!saved.Succeeded) return (saved, Guid.Empty);
+            await transaction.CommitAsync();
+            return (saved, next);
         }
 
         // ---------------- Section rules ----------------
