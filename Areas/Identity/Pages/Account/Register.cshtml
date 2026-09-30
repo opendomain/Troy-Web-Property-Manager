@@ -5,7 +5,7 @@
     ViewData["Title"] = "Register";
 }
 
-<h1>@ViewData["Title"]</h1>
+<h1><i class="fa-solid fa-user-plus me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
 
 @* The form sits in a column so the fields aren't page-wide: full width on a phone, narrower from tablet size up. *@
 <div class="row">
@@ -40,7 +40,7 @@
                 }
                 <span asp-validation-for="Input.Role" class="text-danger"></span>
             </fieldset>
-            <button type="submit" class="btn btn-primary">Register</button>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Register</button>
         </form>
     </div>
 </div>

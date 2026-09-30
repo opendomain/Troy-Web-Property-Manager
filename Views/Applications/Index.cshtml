@@ -3,7 +3,7 @@
 
     ViewData["Title"] = User.IsInRole(AppRoles.PropertyManager) ? "Applications" : "My applications";
 }
-<h1>@ViewData["Title"]</h1>
+<h1><i class="fa-solid fa-file-lines me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
 
 @*
     The application list (6.a). Both roles use this same view - the API and service decide which rows you get
@@ -27,8 +27,8 @@
         </select>
     </div>
     <div class="col-auto">
-        <button type="submit" class="btn btn-outline-primary">Filter</button>
-        <a asp-action="Index" class="btn btn-link">Clear</a>
+        <button type="submit" class="btn btn-outline-primary"><i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Filter</button>
+        <a asp-action="Index" class="btn btn-link"><i class="fa-solid fa-xmark me-1" aria-hidden="true"></i>Clear</a>
     </div>
 </form>
 

@@ -232,3 +232,16 @@ h1 {
   padding: 3rem 1.5rem;
   margin-top: 1rem;
 }
+
+/* ----- Icons (Font Awesome) ----- */
+
+/* Unsorted grid columns show a faint "sortable" icon; the sorted one is full strength. */
+.data-grid-sort-idle {
+  opacity: 0.35;
+}
+
+/* Icons in the navbar line up with the text and share its colour. */
+.app-navbar .fa-solid {
+  width: 1.1em;
+  text-align: center;
+}

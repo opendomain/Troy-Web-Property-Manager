@@ -136,7 +136,9 @@
                 const key = th.querySelector('[data-sort]').dataset.sort;
                 const sorted = key.toLowerCase() === state.sort.toLowerCase();
                 th.setAttribute('aria-sort', sorted ? (state.dir === 'asc' ? 'ascending' : 'descending') : 'none');
-                th.querySelector('.data-grid-sort-icon').textContent = sorted ? (state.dir === 'asc' ? ' ▲' : ' ▼') : '';
+                // Font Awesome sort icons (the span is aria-hidden; aria-sort above is what screen readers use).
+                const icon = sorted ? (state.dir === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort data-grid-sort-idle';
+                th.querySelector('.data-grid-sort-icon').className = 'data-grid-sort-icon fa-solid ms-1 ' + icon;
             });
         }
 

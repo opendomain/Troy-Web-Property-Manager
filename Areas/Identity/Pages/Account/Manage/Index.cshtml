@@ -4,7 +4,7 @@
     ViewData["Title"] = "Profile";
 }
 
-<h1>@ViewData["Title"]</h1>
+<h1><i class="fa-solid fa-circle-user me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
 
 @if (!string.IsNullOrEmpty(Model.StatusMessage))
 {
@@ -26,12 +26,12 @@
                 <input asp-for="Input.PhoneNumber" class="form-control" autocomplete="tel" />
                 <span asp-validation-for="Input.PhoneNumber" class="text-danger"></span>
             </div>
-            <button type="submit" class="btn btn-primary mt-2">Save</button>
+            <button type="submit" class="btn btn-primary mt-2"><i class="fa-solid fa-floppy-disk me-1" aria-hidden="true"></i>Save</button>
         </form>
     </div>
 </div>
 
-<p class="mt-3"><a class="btn btn-outline-secondary" asp-page="./ChangePassword">Change your password</a></p>
+<p class="mt-3"><a class="btn btn-outline-secondary" asp-page="./ChangePassword"><i class="fa-solid fa-key me-1" aria-hidden="true"></i>Change your password</a></p>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />

@@ -4,7 +4,7 @@
     ViewData["Title"] = "Log in";
 }
 
-<h1>@ViewData["Title"]</h1>
+<h1><i class="fa-solid fa-right-to-bracket me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
 
 @* Same as Register: the form sits in a column so the fields aren't page-wide. *@
 <div class="row">
@@ -25,7 +25,7 @@
                 <input asp-for="Input.RememberMe" class="form-check-input" />
                 <label asp-for="Input.RememberMe" class="form-check-label"></label>
             </div>
-            <button type="submit" class="btn btn-primary">Log in</button>
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-right-to-bracket me-1" aria-hidden="true"></i>Log in</button>
         </form>
     </div>
 </div>
