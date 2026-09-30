@@ -5,12 +5,13 @@ using Microsoft.EntityFrameworkCore;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
+using System.Threading.Tasks;
 
 namespace Troy_Web_Property_Manager
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
@@ -78,9 +79,9 @@ namespace Troy_Web_Property_Manager
             app.MapControllerRoute(name: "default", pattern: "{controller}/{action=Index}/{id?}");
 
             // Ensure the database is created and apply any pending migrations
-            CreateDatabase(app);
+            await CreateDatabase(app);
 
-            app.Run();
+            await app.RunAsync();
         }
 
   
@@ -89,7 +90,7 @@ namespace Troy_Web_Property_Manager
         /// Each step checks what's already there, so it's fine to run every time - and a fresh clone just works with
         /// no manual database setup.
         /// </summary>
-        private static void CreateDatabase(WebApplication app)
+        private static async Task CreateDatabase(WebApplication app)
         {
             // NOTE: use this method instead of "dotnet ef database update" command
 
@@ -98,27 +99,27 @@ namespace Troy_Web_Property_Manager
                 var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
                 // Applies any pending migrations and creates the database if it doesn't exist
-                dbContext.Database.Migrate();
+                await dbContext.Database.MigrateAsync();
                 //dbContext.Database.EnsureCreated();
 
-                AddRequiredDataToDatabase(scope);
+                await AddRequiredDataToDatabaseAsync(scope);
 
                 // The demo accounts all share a known password, so only seed them in Development.
                 if (app.Environment.IsDevelopment())
                 {
-                    SeedData(scope, app.Logger);
+                    await SeedDataAsync(scope, app.Logger);
                 }
             }
         }
 
-        private static void AddRequiredDataToDatabase(IServiceScope scope)
+        private static async Task AddRequiredDataToDatabaseAsync(IServiceScope scope)
         {
             // Add required data to the database
             // Example: Add default roles, users, or any other necessary data
             // This method can be customized to add specific data to the database as needed
 
-            SeedRoles(scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>());
-            SeedLookups(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
+            await SeedRolesAsync(scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>());
+            await SeedLookupsAsync(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
         }
 
         /// <summary>
@@ -126,7 +127,7 @@ namespace Troy_Web_Property_Manager
         /// without them - the Status rows back the RentalApplications.Status FK, and the unit types fill the dropdown.
         /// Only adds rows that are missing.
         /// </summary>
-        private static void SeedLookups(ApplicationDbContext dbContext)
+        private static async Task SeedLookupsAsync(ApplicationDbContext dbContext)
         {
             // The Status ids have to match the ApplicationStatus enum, so we insert them explicitly
             // (the id column is an identity, hence IDENTITY_INSERT). Only the missing ones get added.
@@ -138,12 +139,12 @@ namespace Troy_Web_Property_Manager
 
             if (missingStatuses.Count > 0)
             {
-                using var transaction = dbContext.Database.BeginTransaction();
-                dbContext.Database.ExecuteSqlRaw("SET IDENTITY_INSERT [Status] ON");
+                await using var transaction = await dbContext.Database.BeginTransactionAsync();
+                await dbContext.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT [Status] ON");
                 dbContext.Statuses.AddRange(missingStatuses);
-                dbContext.SaveChanges();
-                dbContext.Database.ExecuteSqlRaw("SET IDENTITY_INSERT [Status] OFF");
-                transaction.Commit();
+                await dbContext.SaveChangesAsync();
+                await dbContext.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT [Status] OFF");
+                await transaction.CommitAsync();
             }
 
             // Unit types are matched by name. An inactive type stays on units that already have it,
@@ -160,17 +161,17 @@ namespace Troy_Web_Property_Manager
             dbContext.UnitTypes.AddRange(unitTypes
                 .Where(t => !existingUnitTypes.Contains(t.Name))
                 .Select(t => new UnitType { Name = t.Name, IsActive = t.IsActive }));
-            dbContext.SaveChanges();
+            await dbContext.SaveChangesAsync();
         }
 
         /// <summary>Creates the two Identity roles if they're not there yet.</summary>
-        private static void SeedRoles(RoleManager<IdentityRole> roleManager)
+        private static async Task SeedRolesAsync(RoleManager<IdentityRole> roleManager)
         {
             foreach (var role in AppRoles.All)
             {
-                if (!roleManager.RoleExistsAsync(role).GetAwaiter().GetResult())
+                if (!await roleManager.RoleExistsAsync(role))
                 {
-                    roleManager.CreateAsync(new IdentityRole(role)).GetAwaiter().GetResult();
+                    await roleManager.CreateAsync(new IdentityRole(role));
                 }
             }
         }
@@ -179,13 +180,12 @@ namespace Troy_Web_Property_Manager
         /// Seeds demo data with Bogus (Technical 2.b.ii.1) - managers, applicants, properties, units, and applications
         /// in every status. The details are in <see cref="DemoDataSeeder"/>.
         /// </summary>
-        private static void SeedData(IServiceScope scope, ILogger logger)
+        private static async Task SeedDataAsync(IServiceScope scope, ILogger logger)
         {
             // Only runs on an empty database (no properties yet), so it never messes with real data.
-            var seeded = DemoDataSeeder.SeedAsync(
+            var seeded = await DemoDataSeeder.SeedAsync(
                     scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
-                    scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>())
-                .GetAwaiter().GetResult();
+                    scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>());
 
             if (seeded)
             {
