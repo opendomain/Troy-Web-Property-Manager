@@ -1,29 +1,29 @@
 Troy Web Property Manager   
 TODO
 
-- [ ] ASP.Net Identity  
+- [x] ASP.Net Identity  
       - [x] ~~User / Role management~~  
-      - [ ] Specify if user is a Applicant or Property manager  
-- [ ] Database  
+      - [x] Specify if user is a Applicant or Property manager  
+- [x] Database  
       - [x] ~~SQL Server Express~~  
       - [x] ~~Entity Framework Core~~  
-      - [ ] Code-first database migrations  
-      - [ ] Init on start  
+      - [x] Code-first database migrations  
+      - [x] Init on start  
             - [x] ~~Create~~  
-            - [ ] Migrations  
-            - [ ] Seed data  
-                  - [ ] Bogus  
-- [ ] Data analysis  
-      - [ ] ER diagram  
-      - [ ] Migrations  
-- [ ] Components  
-      - [ ] Controllers  
-      - [ ] View Models  
-      - [ ] Razor views  
-      - [ ] Partial Views  
-      - [ ] View Components  
-      - [ ] Modals   
-- [ ] Unit Tests for business logic  
-- [ ] Review Permissions  
+            - [x] Migrations  
+            - [x] Seed data  
+                  - [x] Bogus  
+- [x] Data analysis  
+      - [x] ER diagram  
+      - [x] Migrations  
+- [x] Components  
+      - [x] Controllers  
+      - [x] View Models  
+      - [x] Razor views  
+      - [x] Partial Views  
+      - [x] View Components  
+      - [x] Modals   
+- [x] Unit Tests for business logic  
+- [x] Review Permissions  
 - [ ] Extra  
       - [ ] Logging

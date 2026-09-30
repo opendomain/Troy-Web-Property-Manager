@@ -116,7 +116,14 @@
             window.location.reload();
             return;
         }
-        const response = await fetch(result.refreshUrl, { headers: ajaxHeaders });
+        let response;
+        try {
+            response = await fetch(result.refreshUrl, { headers: ajaxHeaders });
+        } catch {
+            // The save already worked, so don't show an error - just reload the whole page instead.
+            window.location.reload();
+            return;
+        }
         if (response.ok && !response.redirected) {
             // If the partial's root element is the target itself (like _ResidenceHistory), swap the whole thing;
             // otherwise it's just the inside of the target (like _PropertyList).
