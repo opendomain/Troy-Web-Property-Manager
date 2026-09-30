@@ -296,7 +296,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             AssertOk(await Service().DeleteResidenceAsync(id, residenceId, ApplicantUser));
 
             Assert.False((await LoadAsync(id)).ResidenceHistorySaved);
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), "Save both sections");
+            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.ResidenceHistoryNotSaved);
         }
 
         [Fact]
@@ -305,7 +305,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await StartAsync();
             AssertOk(await Service().SaveApplicantInformationAsync(id, Info(), ApplicantUser));
 
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), "Save both sections");
+            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.ResidenceHistoryNotSaved);
         }
 
         [Fact]
@@ -326,7 +326,11 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await CompleteDraftAsync();
             await LeaseUnitAsync(_db.UnitId);
 
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), "active lease");
+            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.UnitLeased);
+            // The Summary shows the same reason and keeps Submit disabled.
+            var editor = (await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser))!;
+            Assert.Equal([SubmissionRules.UnitLeased], editor.SubmitBlockers);
+            Assert.False(editor.CanSubmit);
         }
 
         [Fact]
