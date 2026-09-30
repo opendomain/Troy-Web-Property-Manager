@@ -1,3 +1,6 @@
 <Solution>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/Troy Web Property Manager.Tests/Troy Web Property Manager.Tests.csproj" />
+  </Folder>
   <Project Path="Troy Web Property Manager.csproj" />
 </Solution>
