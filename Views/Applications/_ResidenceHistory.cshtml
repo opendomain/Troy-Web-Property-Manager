@@ -1,0 +1,51 @@
+@model ApplicationEditorViewModel
+@* Section 2. Refreshable region (#residence-history); editing happens in the residence modal. *@
+<div id="residence-history">
+    <div class="d-flex justify-content-between align-items-center">
+        <h4>Residence history</h4>
+        @if (!Model.IsReadOnly)
+        {
+            <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("Residence", "Applications", new { id = Model.Id })">Add residence</button>
+        }
+    </div>
+    @if (Model.Residences.Count == 0)
+    {
+        <p class="text-muted">No prior residences added yet.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th scope="col">Address</th>
+                        <th scope="col">Landlord</th>
+                        <th scope="col">Landlord phone</th>
+                        <th scope="col">Moved in</th>
+                        <th scope="col">Moved out</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var residence in Model.Residences)
+                    {
+                        <tr>
+                            <td>@residence.Address</td>
+                            <td>@residence.LandlordName</td>
+                            <td>@residence.LandlordPhone</td>
+                            <td>@residence.MoveInDate?.ToShortDateString()</td>
+                            <td>@residence.MoveOutDate?.ToShortDateString()</td>
+                            <td class="text-end text-nowrap">
+                                @if (!Model.IsReadOnly)
+                                {
+                                    <button type="button" class="btn btn-sm btn-link" data-modal-url="@Url.Action("Residence", "Applications", new { id = Model.Id, residenceId = residence.ResidenceId })">Edit</button>
+                                    <button type="button" class="btn btn-sm btn-link text-danger" data-modal-url="@Url.Action("DeleteResidence", "Applications", new { id = Model.Id, residenceId = residence.ResidenceId })">Remove</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

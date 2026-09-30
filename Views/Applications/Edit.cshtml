@@ -1,0 +1,97 @@
+@model ApplicationEditorViewModel
+@{
+    ViewData["Title"] = $"Application #{Model.Id}";
+}
+<div class="d-flex justify-content-between align-items-start">
+    <div>
+        <h1>@ViewData["Title"]</h1>
+        <p>@Model.UnitLabel · Status: <strong>@Model.Status</strong></p>
+    </div>
+    <div>
+        @if (Model.CanWithdraw)
+        {
+            <button type="button" class="btn btn-outline-danger" data-modal-url="@Url.Action("Withdraw", new { id = Model.Id })">Withdraw</button>
+        }
+        @* Step 13 adds the Review action and modal; restore this button then:
+        @if (Model.CanReview)
+        {
+            <button type="button" class="btn btn-primary" data-modal-url="@Url.Action("Review", new { id = Model.Id })">Review</button>
+        }
+        *@
+    </div>
+</div>
+
+@if (Model.ReviewComment is not null)
+{
+    <div class="alert @(Model.Status == ApplicationStatus.Returned ? "alert-warning" : "alert-danger")" role="alert">
+        <strong>Reviewer's comment:</strong> @Model.ReviewComment
+    </div>
+}
+
+<div class="row">
+    <div class="@(Model.IsManager ? "col-lg-8" : "col-12")">
+        <p class="text-muted">Section: <strong>@Model.Section.DisplayName()</strong></p>
+
+        @* One form, one action. The section shown is chosen by Model.Section. *@
+        <form asp-action="Edit" asp-route-id="@Model.Id" method="post">
+            <input type="hidden" asp-for="Section" />
+            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+
+            @switch (Model.Section)
+            {
+                case ApplicationSection.Applicant:
+                    <partial name="_ApplicantInformation" model="Model" />
+                    break;
+                case ApplicationSection.ResidenceHistory:
+                    <partial name="_ResidenceHistory" model="Model" />
+                    break;
+                default:
+                    <partial name="_Summary" model="Model" />
+                    break;
+            }
+
+            <div class="d-flex gap-2 mt-3">
+                @if (Model.CanEdit)
+                {
+                    if (Model.Section != ApplicationSection.Applicant)
+                    {
+                        @* formnovalidate: Back skips client-side validation because it doesn't save. *@
+                        <button type="submit" name="command" value="back" class="btn btn-outline-secondary" formnovalidate>Back</button>
+                    }
+                    if (Model.Section != ApplicationSection.Summary)
+                    {
+                        <button type="submit" name="command" value="continue" class="btn btn-primary">Continue</button>
+                    }
+                    else
+                    {
+                        <button type="submit" name="command" value="submit" class="btn btn-success" disabled="@(!Model.CanSubmit)">Submit</button>
+                    }
+                }
+                else
+                {
+                    @* Read-only viewers only navigate; nothing is posted. *@
+                    if (Model.Section != ApplicationSection.Applicant)
+                    {
+                        <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Previous(Model.Section)">Back</a>
+                    }
+                    if (Model.Section != ApplicationSection.Summary)
+                    {
+                        <a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Next(Model.Section)">Next</a>
+                    }
+                }
+            </div>
+        </form>
+    </div>
+
+    @if (Model.IsManager)
+    {
+        <div class="col-lg-4">
+            @* Step 13 adds the ApplicationHistory view component that renders here:
+               <vc:application-history application-id="Model.Id" /> *@
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <partial name="~/Pages/Shared/_ValidationScriptsPartial.cshtml" />
+}

@@ -1,0 +1,27 @@
+@model ApplicationEditorViewModel
+@* Section 1. The same partial renders editable or read-only (IsReadOnly is set by the server). *@
+<h4>Applicant information</h4>
+<fieldset disabled="@Model.IsReadOnly">
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label asp-for="Applicant.Name" class="form-label"></label>
+            <input asp-for="Applicant.Name" class="form-control" autocomplete="name" />
+            <span asp-validation-for="Applicant.Name" class="text-danger"></span>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label asp-for="Applicant.Phone" class="form-label"></label>
+            <input asp-for="Applicant.Phone" class="form-control" autocomplete="tel" />
+            <span asp-validation-for="Applicant.Phone" class="text-danger"></span>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label asp-for="Applicant.Email" class="form-label"></label>
+            <input asp-for="Applicant.Email" class="form-control" autocomplete="email" />
+            <span asp-validation-for="Applicant.Email" class="text-danger"></span>
+        </div>
+        <div class="col-md-6 mb-3">
+            <label asp-for="Applicant.CurrentAddress" class="form-label"></label>
+            <input asp-for="Applicant.CurrentAddress" class="form-control" autocomplete="street-address" />
+            <span asp-validation-for="Applicant.CurrentAddress" class="text-danger"></span>
+        </div>
+    </div>
+</fieldset>

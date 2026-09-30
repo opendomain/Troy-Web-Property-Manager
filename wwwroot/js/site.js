@@ -93,7 +93,16 @@
         }
         const response = await fetch(result.refreshUrl, { headers: ajaxHeaders });
         if (response.ok && !response.redirected) {
-            target.innerHTML = await response.text();
+            // A partial whose root element is the target itself (e.g. _ResidenceHistory) replaces it;
+            // otherwise the partial is the target's contents (e.g. _PropertyList).
+            const template = document.createElement('template');
+            template.innerHTML = (await response.text()).trim();
+            const root = template.content.firstElementChild;
+            if (template.content.childElementCount === 1 && root.id && root.id === target.id) {
+                target.replaceWith(root);
+            } else {
+                target.replaceChildren(template.content);
+            }
         } else {
             window.location.reload();
         }
