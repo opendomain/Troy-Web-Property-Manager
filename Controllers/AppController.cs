@@ -1,6 +1,4 @@
-﻿using System.Security.Claims;
-using Microsoft.AspNetCore.Mvc;
-using Troy_Web_Property_Manager.Models;
+﻿using Microsoft.AspNetCore.Mvc;
 using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager.Controllers
@@ -17,7 +15,7 @@ namespace Troy_Web_Property_Manager.Controllers
         /// </summary>
         protected CurrentUser CurrentUser
         {
-            get { return new(User.FindFirstValue(ClaimTypes.NameIdentifier)!, User.IsInRole(AppRoles.PropertyManager)); }
+            get { return CurrentUser.From(User); }
         }
 
         /// <summary>

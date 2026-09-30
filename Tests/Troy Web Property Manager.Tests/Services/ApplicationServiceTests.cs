@@ -993,7 +993,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.DoesNotContain("manager-1", System.Text.Json.JsonSerializer.Serialize(new object?[]
             {
                 applicant,
-                await Service().ListAsync(null, null, ApplicantUser)
+                (await Service().ListAsync(new(), ApplicantUser)).Items
             }));
         }
 
@@ -1099,7 +1099,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             [
                 await Service().GetEditorAsync(id, null, ApplicantUser),
                 await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser),
-                await Service().ListAsync(null, null, ApplicantUser),
+                (await Service().ListAsync(new(), ApplicantUser)).Items,
                 await Service().GetHistoryAsync(id, ApplicantUser)
             ];
             Assert.DoesNotContain(SecretNote, System.Text.Json.JsonSerializer.Serialize(applicantData));
@@ -1170,8 +1170,8 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var mine = await SubmittedAsync(ApplicantUser);
             var theirs = await SubmittedAsync(OtherApplicantUser);
 
-            var applicantList = await Service().ListAsync(null, null, ApplicantUser);
-            var managerList = await Service().ListAsync(null, null, ManagerUser);
+            var applicantList = (await Service().ListAsync(new(), ApplicantUser)).Items;
+            var managerList = (await Service().ListAsync(new(), ManagerUser)).Items;
 
             Assert.Equal(new[] { mine }, applicantList.Select(a => a.Id));
             Assert.Equal(new[] { theirs, mine }, managerList.Select(a => a.Id)); // newest first
@@ -1182,9 +1182,9 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var draft = await StartAsync(ApplicantUser);
 
-            Assert.Empty(await Service().ListAsync(null, null, ManagerUser));
+            Assert.Empty((await Service().ListAsync(new(), ManagerUser)).Items);
             Assert.Null(await Service().GetEditorAsync(draft, null, ManagerUser));
-            Assert.Equal(new[] { draft }, (await Service().ListAsync(null, null, ApplicantUser)).Select(a => a.Id));
+            Assert.Equal(new[] { draft }, (await Service().ListAsync(new(), ApplicantUser)).Items.Select(a => a.Id));
         }
 
         [Fact]
@@ -1193,10 +1193,168 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var draft = await StartAsync(unitId: _db.SecondUnitId);
             var submitted = await SubmittedAsync(unitId: _db.UnitId);
 
-            Assert.Equal(new[] { submitted }, (await Service().ListAsync(ApplicationStatus.Submitted, null, ManagerUser)).Select(a => a.Id));
-            Assert.Equal(new[] { draft }, (await Service().ListAsync(ApplicationStatus.Draft, null, ApplicantUser)).Select(a => a.Id));
-            Assert.Equal(2, (await Service().ListAsync(null, _db.PropertyId, ApplicantUser)).Count);
-            Assert.Empty(await Service().ListAsync(null, 9999, ApplicantUser));
+            Assert.Equal(new[] { submitted }, (await Service().ListAsync(new() { Status = ApplicationStatus.Submitted }, ManagerUser)).Items.Select(a => a.Id));
+            Assert.Equal(new[] { draft }, (await Service().ListAsync(new() { Status = ApplicationStatus.Draft }, ApplicantUser)).Items.Select(a => a.Id));
+            Assert.Equal(2, (await Service().ListAsync(new() { PropertyId = _db.PropertyId }, ApplicantUser)).Items.Count);
+            Assert.Empty((await Service().ListAsync(new() { PropertyId = 9999 }, ApplicantUser)).Items);
+        }
+
+        /// <summary>
+        /// Five submitted applications a manager can see: three applicants, two units (101 and 102), in id order
+        /// A1/101, A1/102, A2/101, A2/102, A3/101. They all save the same email on the application.
+        /// </summary>
+        private async Task<int[]> FiveSubmittedAsync()
+        {
+            return
+            [
+                await SubmittedAsync(ApplicantUser, _db.UnitId),
+                await SubmittedAsync(ApplicantUser, _db.SecondUnitId),
+                await SubmittedAsync(OtherApplicantUser, _db.UnitId),
+                await SubmittedAsync(OtherApplicantUser, _db.SecondUnitId),
+                await SubmittedAsync(ThirdApplicantUser, _db.UnitId)
+            ];
+        }
+
+        /// <summary>Captures the SQL each query runs, to check the paging really happens in the database.</summary>
+        private sealed class CaptureSql : DbCommandInterceptor
+        {
+            public List<string> Commands { get; } = [];
+
+            public override ValueTask<InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+                System.Data.Common.DbCommand command, CommandEventData eventData,
+                InterceptionResult<System.Data.Common.DbDataReader> result, CancellationToken cancellationToken = default)
+            {
+                Commands.Add(command.CommandText);
+                return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+            }
+        }
+
+        [Fact]
+        public async Task List_ReturnsOnePageAndTheFilteredTotal()
+        {
+            var ids = await FiveSubmittedAsync();
+
+            var page1 = await Service().ListAsync(new() { PageSize = 2 }, ManagerUser);
+            var page3 = await Service().ListAsync(new() { PageSize = 2, Page = 3 }, ManagerUser);
+
+            Assert.Equal(new[] { ids[4], ids[3] }, page1.Items.Select(a => a.Id)); // newest first by default
+            Assert.Equal((5, 1, 2), (page1.Total, page1.Page, page1.PageSize));
+            Assert.Equal(new[] { ids[0] }, page3.Items.Select(a => a.Id));
+            Assert.Equal(5, page3.Total);
+
+            // The total counts what matches the filter, not the whole table.
+            AssertOk(await Service().ClaimAsync(ids[0], ManagerUser));
+            var submittedOnly = await Service().ListAsync(new() { Status = ApplicationStatus.Submitted, PageSize = 2 }, ManagerUser);
+            Assert.Equal(4, submittedOnly.Total);
+            Assert.Equal(2, submittedOnly.Items.Count);
+        }
+
+        [Fact]
+        public async Task List_PagesInTheDatabase()
+        {
+            await FiveSubmittedAsync();
+            var sql = new CaptureSql();
+
+            await Service(sql).ListAsync(new() { PageSize = 2, Page = 2, Sort = ApplicationSortColumn.Applicant }, ManagerUser);
+
+            // One COUNT, then one query that sorts and pages (SQLite's LIMIT/OFFSET; OFFSET/FETCH on SQL Server).
+            Assert.Equal(2, sql.Commands.Count);
+            Assert.Contains("COUNT(*)", sql.Commands[0]);
+            Assert.Contains("ORDER BY", sql.Commands[1]);
+            Assert.Contains("LIMIT", sql.Commands[1]);
+            Assert.Contains("OFFSET", sql.Commands[1]);
+        }
+
+        [Fact]
+        public async Task List_PagePastTheEnd_ReturnsTheLastPage()
+        {
+            var ids = await FiveSubmittedAsync();
+
+            var result = await Service().ListAsync(new() { PageSize = 2, Page = 99 }, ManagerUser);
+
+            Assert.Equal(3, result.Page);
+            Assert.Equal(new[] { ids[0] }, result.Items.Select(a => a.Id));
+
+            // Nothing matches: page 1, empty, total 0.
+            var none = await Service().ListAsync(new() { PropertyId = 9999, Page = 5 }, ManagerUser);
+            Assert.Equal((0, 1), (none.Total, none.Page));
+            Assert.Empty(none.Items);
+        }
+
+        [Fact]
+        public async Task List_ClampsThePageSize()
+        {
+            await FiveSubmittedAsync();
+
+            Assert.Equal(ApplicationListQuery.MaxPageSize, (await Service().ListAsync(new() { PageSize = 10_000 }, ManagerUser)).PageSize);
+            var tiny = await Service().ListAsync(new() { PageSize = 0, Page = -3 }, ManagerUser);
+            Assert.Equal((1, 1), (tiny.PageSize, tiny.Page));
+            Assert.Single(tiny.Items);
+        }
+
+        [Theory]
+        [InlineData(ApplicationSortColumn.Id, SortDirection.Asc, new[] { 0, 1, 2, 3, 4 })]
+        [InlineData(ApplicationSortColumn.Id, SortDirection.Desc, new[] { 4, 3, 2, 1, 0 })]
+        // Same property, so by unit number; ties by id in the same direction.
+        [InlineData(ApplicationSortColumn.Property, SortDirection.Asc, new[] { 0, 2, 4, 1, 3 })]
+        [InlineData(ApplicationSortColumn.Property, SortDirection.Desc, new[] { 3, 1, 4, 2, 0 })]
+        // Everyone saved the same email, so it's all ties and the id decides.
+        [InlineData(ApplicationSortColumn.Applicant, SortDirection.Asc, new[] { 0, 1, 2, 3, 4 })]
+        [InlineData(ApplicationSortColumn.Applicant, SortDirection.Desc, new[] { 4, 3, 2, 1, 0 })]
+        // Submitted in id order, so it matches the id sort (and so would a tie).
+        [InlineData(ApplicationSortColumn.Submitted, SortDirection.Asc, new[] { 0, 1, 2, 3, 4 })]
+        [InlineData(ApplicationSortColumn.Submitted, SortDirection.Desc, new[] { 4, 3, 2, 1, 0 })]
+        public async Task List_SortsByEachColumn(ApplicationSortColumn sort, SortDirection dir, int[] expectedOrder)
+        {
+            var ids = await FiveSubmittedAsync();
+
+            var result = await Service().ListAsync(new() { Sort = sort, Dir = dir }, ManagerUser);
+
+            Assert.Equal(expectedOrder.Select(i => ids[i]), result.Items.Select(a => a.Id));
+        }
+
+        [Fact]
+        public async Task List_SortsByTheEmailShown_IncludingTheProfileFallback()
+        {
+            // Not saved yet, so it shows (and sorts by) the profile's email, "applicant-1@example.com".
+            var unsaved = await StartAsync(ApplicantUser, _db.UnitId);
+            // Saved with "aaa@example.com". The blank phone is an error, so it isn't copied to the profile - which would
+            // change the unsaved one's email too.
+            var saved = await StartAsync(ApplicantUser, _db.SecondUnitId);
+            var info = Info("aaa@example.com");
+            info.Phone = "";
+            AssertOk(await SaveInfoAsync(saved, info, ApplicantUser));
+
+            var asc = await Service().ListAsync(new() { Sort = ApplicationSortColumn.Applicant, Dir = SortDirection.Asc }, ApplicantUser);
+            var desc = await Service().ListAsync(new() { Sort = ApplicationSortColumn.Applicant, Dir = SortDirection.Desc }, ApplicantUser);
+
+            Assert.Equal(new[] { ("aaa@example.com", saved), ("applicant-1@example.com", unsaved) },
+                asc.Items.Select(a => (a.Applicant, a.Id)));
+            Assert.Equal(new[] { unsaved, saved }, desc.Items.Select(a => a.Id));
+        }
+
+        [Fact]
+        public async Task List_SortsByStatusName_AndPagesStablyAcrossTies()
+        {
+            var ids = await FiveSubmittedAsync();
+            AssertOk(await Service().ClaimAsync(ids[1], ManagerUser));
+
+            // "Submitted" < "UnderReview", so the claimed one sorts last ascending, first descending.
+            var asc = await Service().ListAsync(new() { Sort = ApplicationSortColumn.Status, Dir = SortDirection.Asc }, ManagerUser);
+            var desc = await Service().ListAsync(new() { Sort = ApplicationSortColumn.Status, Dir = SortDirection.Desc }, ManagerUser);
+            Assert.Equal(new[] { ids[0], ids[2], ids[3], ids[4], ids[1] }, asc.Items.Select(a => a.Id));
+            Assert.Equal(new[] { ids[1], ids[4], ids[3], ids[2], ids[0] }, desc.Items.Select(a => a.Id));
+
+            // Four rows tie on "Submitted"; walking the pages still sees each application exactly once.
+            var seen = new List<int>();
+            for (var page = 1; page <= 3; page++)
+            {
+                seen.AddRange((await Service().ListAsync(new()
+                {
+                    Sort = ApplicationSortColumn.Status, Dir = SortDirection.Asc, PageSize = 2, Page = page
+                }, ManagerUser)).Items.Select(a => a.Id));
+            }
+            Assert.Equal(asc.Items.Select(a => a.Id), seen);
         }
 
         [Fact]

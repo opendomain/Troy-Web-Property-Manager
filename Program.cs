@@ -1,7 +1,11 @@
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
@@ -29,6 +33,19 @@ namespace Troy_Web_Property_Manager
                 .AddRoles<IdentityRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
 
+            // The JSON API (/api/...) uses the same auth cookie as the pages. A browser page that isn't signed in should
+            // go to the login page, but an API call should just get the status code, so it can't be mistaken for data.
+            // Everything else keeps Identity's default (which already answers X-Requested-With requests with a 401).
+            builder.Services.ConfigureApplicationCookie(options =>
+            {
+                var redirectToLogin = options.Events.OnRedirectToLogin;
+                var redirectToAccessDenied = options.Events.OnRedirectToAccessDenied;
+                options.Events.OnRedirectToLogin = context =>
+                    ApiStatusOr(context, StatusCodes.Status401Unauthorized, redirectToLogin);
+                options.Events.OnRedirectToAccessDenied = context =>
+                    ApiStatusOr(context, StatusCodes.Status403Forbidden, redirectToAccessDenied);
+            });
+
             builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
             builder.Services.AddSingleton<IEmailSender, EmailSender>();
 
@@ -44,7 +61,55 @@ namespace Troy_Web_Property_Manager
                 options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
                 // Only an explicit [Required] counts, so display-only view model properties don't trip validation.
                 options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+            }).AddJsonOptions(options =>
+            {
+                // Enums go out as their names - "Submitted", not 2 - so API clients don't depend on the numbers.
+                // Query strings already accept either.
+                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
             });
+            // The OpenAPI generator builds its schemas from these options (the minimal API ones), not MVC's above, so
+            // they need the same converter for the document to say "Submitted" too.
+            builder.Services.ConfigureHttpJsonOptions(options =>
+                options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+            // OpenAPI document for the JSON API, served at /openapi/v1.json in Development. It's built from the API
+            // controllers' routes, [ProducesResponseType]s and XML doc comments (GenerateDocumentationFile in the
+            // .csproj). The MVC pages use conventional routing, so they stay out of it.
+            builder.Services.AddOpenApi(options => options.AddOperationTransformer((operation, context, cancellationToken) =>
+            {
+                foreach (var (code, response) in operation.Responses ?? [])
+                {
+                    if (response.Content is null) continue;
+                    // 401 and 403 come from the cookie handler (ApiStatusOr) with no body, whatever MVC would send.
+                    if (code is "401" or "403") response.Content.Clear();
+                    // [Produces] adds an application/json entry with no schema next to a 400's problem+json.
+                    foreach (var type in response.Content.Where(c => c.Value.Schema is null).Select(c => c.Key).ToList())
+                    {
+                        response.Content.Remove(type);
+                    }
+                }
+                return Task.CompletedTask;
+            }).AddDocumentTransformer((document, context, cancellationToken) =>
+            {
+                document.Info.Title = "Troy Web Property Manager API";
+                document.Info.Description =
+                    "JSON endpoints behind the site's data grids. Sign in on the site first: the API uses the same " +
+                    "ASP.NET Core Identity cookie, and answers 401 without it.";
+
+                const string cookieScheme = "IdentityCookie";
+                document.Components ??= new OpenApiComponents();
+                document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+                document.Components.SecuritySchemes[cookieScheme] = new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.ApiKey,
+                    In = ParameterLocation.Cookie,
+                    // The cookie handler's default name: ".AspNetCore.Identity.Application".
+                    Name = CookieAuthenticationDefaults.CookiePrefix + IdentityConstants.ApplicationScheme,
+                    Description = "The cookie set when you sign in on the site."
+                };
+                document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference(cookieScheme, document)] = [] }];
+                return Task.CompletedTask;
+            }));
             // "Now" and "today" in the business's time zone (BusinessTimeZone in appsettings), not the server's.
             builder.Services.AddSingleton(BusinessClock.FromConfiguration(builder.Configuration));
             // Scoped = one per request, sharing that request's DbContext (also scoped).
@@ -79,13 +144,30 @@ namespace Troy_Web_Property_Manager
             // No default controller, so "/" stays the template's Razor Pages home page.
             app.MapControllerRoute(name: "default", pattern: "{controller}/{action=Index}/{id?}");
 
+            // The API description is for developers, so like the migrations endpoint it's only served in Development.
+            if (app.Environment.IsDevelopment())
+            {
+                app.MapOpenApi();
+            }
+
             // Ensure the database is created and apply any pending migrations
             await CreateDatabase(app);
 
             await app.RunAsync();
         }
 
-  
+        /// <summary>
+        /// For requests under /api, answers with <paramref name="statusCode"/> instead of redirecting to the login or
+        /// access denied page. Anything else gets the cookie handler's usual redirect.
+        /// </summary>
+        private static Task ApiStatusOr(RedirectContext<CookieAuthenticationOptions> context, int statusCode,
+            Func<RedirectContext<CookieAuthenticationOptions>, Task> otherwise)
+        {
+            if (!context.Request.Path.StartsWithSegments("/api")) return otherwise(context);
+            context.Response.StatusCode = statusCode;
+            return Task.CompletedTask;
+        }
+
         /// <summary>
         /// Runs on startup (Technical 2.b): creates the database and applies migrations (2.b.i), then seeds it (2.b.ii).
         /// Each step checks what's already there, so it's fine to run every time - and a fresh clone just works with

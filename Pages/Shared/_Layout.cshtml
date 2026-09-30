@@ -90,6 +90,8 @@
        validation, and our small site.js for the modal plumbing. asp-append-version adds a hash so browsers grab
        a new site.js as soon as it changes. *@
     <script src="~/js/site.js" asp-append-version="true"></script>
+    @* grid.js drives any <vc:data-grid> on the page (sorting and paging from a JSON endpoint); it does nothing elsewhere. *@
+    <script src="~/js/grid.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
 </body>

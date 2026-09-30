@@ -45,8 +45,10 @@ namespace Troy_Web_Property_Manager.Controllers
         // ---------------- List ----------------
 
         /// <summary>
-        /// The application list. Applicants see their own, managers see everything.
-        /// The status and property filters go into the query so SQL Server does the filtering, not us in memory.
+        /// The application list page: just the filter form and the data grid. The rows come from
+        /// <c>GET /api/applications</c> (ApplicationsApiController), which filters, sorts and pages in SQL - applicants
+        /// see their own, managers everything that's been submitted. The filters are bound here too, only so the form
+        /// shows what's in the query string after a refresh.
         /// </summary>
         public async Task<IActionResult> Index(ApplicationStatus? status, int? propertyId)
         {
@@ -54,7 +56,6 @@ namespace Troy_Web_Property_Manager.Controllers
             {
                 Status = status,
                 PropertyId = propertyId,
-                Items = await applications.ListAsync(status, propertyId, CurrentUser),
                 Properties = await properties.GetPropertyOptionsAsync(propertyId)
             });
         }
