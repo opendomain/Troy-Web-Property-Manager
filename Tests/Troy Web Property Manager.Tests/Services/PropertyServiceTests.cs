@@ -212,5 +212,21 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Equal(2, (await Service().GetAvailableUnitsAsync(_db.PropertyId)).Count);
             Assert.Empty(await Service().GetAvailableUnitsAsync(9999));
         }
+
+        [Fact]
+        public async Task AvailableUnits_FiltersByMinimumBedrooms()
+        {
+            // Unit 101 has 2 bedrooms, unit 102 has 1.
+            Assert.Equal(2, (await Service().GetAvailableUnitsAsync(minBedrooms: 1)).Count);
+            Assert.Equal(new[] { _db.UnitId }, (await Service().GetAvailableUnitsAsync(minBedrooms: 2)).Select(u => u.Id));
+            Assert.Empty(await Service().GetAvailableUnitsAsync(minBedrooms: 3));
+        }
+
+        [Fact]
+        public async Task AvailableUnits_CombinesPropertyAndBedroomFilters()
+        {
+            Assert.Single(await Service().GetAvailableUnitsAsync(_db.PropertyId, minBedrooms: 2));
+            Assert.Empty(await Service().GetAvailableUnitsAsync(9999, minBedrooms: 1));
+        }
     }
 }

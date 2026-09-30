@@ -5,7 +5,7 @@
 <h1>@ViewData["Title"]</h1>
 @*
     The applicant's Available units page (2.b). Only shows units with no lease covering today (2.d), filtered in SQL.
-    The property filter is a GET form, same as on the application list.
+    The property and bedroom filters are a GET form, same as on the application list.
 *@
 
 <form method="get" class="row g-2 align-items-end mb-3">
@@ -15,14 +15,28 @@
             <option value="">All properties</option>
         </select>
     </div>
+    <div class="col-sm-4 col-md-3">
+        <label for="bedrooms" class="form-label">Bedrooms</label>
+        <select id="bedrooms" name="bedrooms" class="form-select">
+            <option value="">Any</option>
+            @for (var b = 1; b <= 3; b++)
+            {
+                <option value="@b" selected="@(Model.Bedrooms == b)">@b+</option>
+            }
+        </select>
+    </div>
     <div class="col-auto">
         <button type="submit" class="btn btn-outline-primary">Filter</button>
+        @if (Model.IsFiltered)
+        {
+            <a asp-action="Index" class="btn btn-link">Clear</a>
+        }
     </div>
 </form>
 
 @if (Model.Units.Count == 0)
 {
-    <p class="text-muted">No units are available right now.</p>
+    <p class="text-muted">@(Model.IsFiltered ? "No units match those filters right now." : "No units are available right now.")</p>
 }
 else
 {

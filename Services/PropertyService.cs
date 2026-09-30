@@ -45,15 +45,16 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>
-        /// Units with no lease covering today, optionally just for one property (filtered in SQL). We never store
-        /// "available" - a stored flag would be wrong the day a lease ends (2.d).
+        /// Units with no lease covering today, optionally just for one property and/or a minimum number of bedrooms
+        /// (all filtered in SQL). We never store "available" - a stored flag would be wrong the day a lease ends (2.d).
         /// </summary>
-        public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync(int? propertyId = null)
+        public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync(int? propertyId = null, int? minBedrooms = null)
         {
             var leasedToday = LeaseRules.ActiveOn(DateTime.Today);
             return db.Units.AsNoTracking()
             .Where(u => !u.Leases.AsQueryable().Any(leasedToday))
             .Where(u => propertyId == null || u.PropertyId == propertyId)
+            .Where(u => minBedrooms == null || u.Bedrooms >= minBedrooms)
             .OrderBy(u => u.Property.Name).ThenBy(u => u.UnitNumber)
             .Select(u => new AvailableUnitViewModel
             {
