@@ -30,12 +30,13 @@ namespace Troy_Web_Property_Manager.Services
             }).ToListAsync();
         }
 
-        /// <summary>Units with no lease covering today (filtered in SQL).</summary>
-        public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync()
+        /// <summary>Units with no lease covering today, optionally for one property (filtered in SQL).</summary>
+        public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync(int? propertyId = null)
         {
             var leasedToday = LeaseRules.ActiveOn(DateTime.Today);
             return db.Units.AsNoTracking()
             .Where(u => !u.Leases.AsQueryable().Any(leasedToday))
+            .Where(u => propertyId == null || u.PropertyId == propertyId)
             .OrderBy(u => u.Property.Name).ThenBy(u => u.UnitNumber)
             .Select(u => new AvailableUnitViewModel
             {
@@ -77,6 +78,12 @@ namespace Troy_Web_Property_Manager.Services
             await db.SaveChangesAsync();
             return ServiceResult.Ok();
         }
+
+        /// <summary>Property dropdown options, with <paramref name="selectedId"/> preselected.</summary>
+        public Task<List<SelectListItem>> GetPropertyOptionsAsync(int? selectedId = null) =>
+            db.Properties.AsNoTracking().OrderBy(p => p.Name)
+            .Select(p => new SelectListItem(p.Name, p.Id.ToString(), p.Id == selectedId))
+            .ToListAsync();
 
         public Task<bool> PropertyExistsAsync(int id) => db.Properties.AnyAsync(p => p.Id == id);
 
