@@ -12,3 +12,9 @@ Troy Web Property Manager
       1. dotnet tool install \--global dotnet-ef 
 
 For full email functionality, see  DOCS\Email Setup
+
+Without a SendGrid key the app still runs: in Development the confirmation email is written to the log instead, so you can copy the link from there.
+
+## Security notes
+
+- Sign-up lets you pick your own role, including Property Manager, because the assessment asks for a role picker (1.a.i). Managers can see every applicant's details, so a real deployment should invite or approve managers instead of letting anyone choose that role.
