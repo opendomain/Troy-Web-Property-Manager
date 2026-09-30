@@ -1,5 +1,6 @@
 @model ApplicationListViewModel
 @{
+
     ViewData["Title"] = User.IsInRole(AppRoles.PropertyManager) ? "Applications" : "My applications";
 }
 <h1>@ViewData["Title"]</h1>
