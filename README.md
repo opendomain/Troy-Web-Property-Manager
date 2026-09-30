@@ -10,6 +10,7 @@ An ASP.NET Core MVC app (.NET 10, EF Core 10, SQL Server) for renting out units.
 | SQL Server LocalDB | The database | Comes with Visual Studio's **ASP.NET and web development** workload, or install **SQL Server Express LocalDB** on its own. Any other SQL Server works too; see [Connection string](#connection-string). LocalDB is Windows only. |
 | Visual Studio 2026 *(optional)* | IDE | With the **ASP.NET and web development** workload. |
 | SQL Server Management Studio *(optional)* | Browse the database | |
+| Google Chrome *(optional)* | Only for the UI tests | Any recent version; the matching ChromeDriver is downloaded automatically. |
 | `dotnet-ef` *(optional)* | Only for adding migrations or dropping the database | `dotnet tool install --global dotnet-ef` |
 
 NuGet packages are restored on the first build, so the first build needs internet access.
@@ -80,11 +81,47 @@ dotnet user-secrets set "SendGrid:FromName" "Property Manager"
 
 ## Running the tests
 
+There are two test projects. `dotnet test` from the repo root runs both.
+
+### Unit tests
+
 ```sh
-dotnet test
+dotnet test "Tests/Troy Web Property Manager.Tests"
 ```
 
-The tests (xUnit, in `Tests/Troy Web Property Manager.Tests`) run the services and rules against an in-memory SQLite database built from the real EF model. They don't need SQL Server or any configuration.
+These tests (xUnit) run the services and rules against an in-memory SQLite database built from the real EF model. They don't need SQL Server or any configuration, and they take about 10 seconds.
+
+### UI tests
+
+```sh
+dotnet test "Tests/Troy Web Property Manager.UITests"
+```
+
+These tests (xUnit + Selenium WebDriver, headless Chrome) drive the real app in a browser. They cover every requirement and bonus item in the assessment, for both roles, including security (wrong role, other people's applications, tampered posts, missing antiforgery tokens) and the error cases.
+
+- **Needs:** Google Chrome and SQL Server LocalDB. Selenium Manager downloads the matching ChromeDriver on first run, so the first run needs internet access.
+- **What it does:** it starts the app in-process (`WebApplicationFactory` over Kestrel on a free port) against a new LocalDB database. Program.cs creates, migrates and seeds that database like a real first run, and it's dropped at the end. The tests check they're connected to that throwaway database before running, so your development database is never touched. Emails are captured in memory (registration tests follow the confirmation link), so nothing goes to SendGrid.
+- **How long:** a few minutes. The tests share one running app and run one at a time, each in its own browser.
+- **When one fails:** the error says what it was waiting for and where the browser was. A screenshot and the page source are saved under the test output folder, in `UiTestArtifacts`.
+- **Run a subset:** use a filter, e.g. `--filter "FullyQualifiedName~SecurityTests"`.
+
+The tests are built in layers, so a test reads like the steps a person would take:
+
+| Folder | What's in it |
+|---|---|
+| `Infrastructure` | `UiFixture` (the running app, test users, database access), `Browser` (waiting, modals, requests with the browser's cookies), the captured email sender |
+| `Pages` | One page object per page: `LoginPage`, `PropertiesPage`, `UnitsPage`, `ApplicationListPage`, `ApplicationPage`, `QueuePage`, … |
+| `Workflows` | Reusable steps built from the pages: `LogInAs`, `RegisterAndConfirm`, `ApplyFor`, `CompleteSections`, `CreateSubmittedApplication`, `Claim`, `ReviewApplication`, `Approve` |
+| `Tests` | The tests, one class per area of the assessment |
+
+For example:
+
+```csharp
+using var applicant = app.NewBrowserAs(await app.CreateApplicantAsync());
+var id = applicant.CreateSubmittedApplication(listing);   // apply, fill both sections, submit
+using var manager = app.NewBrowserAs(await app.CreateManagerAsync());
+manager.Approve(id);                                      // claim, review, approve
+```
 
 ## API and OpenAPI
 
