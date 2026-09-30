@@ -16,8 +16,41 @@ namespace Troy_Web_Property_Manager.Services
         private Task<bool> UnitHasActiveLeaseAsync(int unitId) =>
             db.Leases.Where(l => l.UnitId == unitId).AnyAsync(LeaseRules.ActiveOn(DateTime.Today));
 
+        /// <summary>
+        /// Saves changes to an application. Status is a concurrency token, so if someone else changed the status
+        /// since it was loaded (e.g. the applicant withdrew while a manager approved), nothing is saved.
+        /// </summary>
+        private async Task<ServiceResult> SaveApplicationAsync()
+        {
+            try
+            {
+                await db.SaveChangesAsync();
+                return ServiceResult.Ok();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                db.ChangeTracker.Clear();
+                return ServiceResult.Error("This application was changed by someone else. Reload the page and try again.");
+            }
+        }
+
         // ---------------- Applicant ----------------
         public async Task<ServiceResult> StartAsync(int unitId, CurrentUser user)
+        {
+            try
+            {
+                return await StartOnceAsync(unitId, user);
+            }
+            catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
+            {
+                // A concurrent request (e.g. a double-click on Apply) created the applicant profile or the open
+                // application first. Retrying finds and reuses what it created.
+                db.ChangeTracker.Clear();
+                return await StartOnceAsync(unitId, user);
+            }
+        }
+
+        private async Task<ServiceResult> StartOnceAsync(int unitId, CurrentUser user)
         {
             if (user.IsManager) return ServiceResult.Error("Only applicants can apply for a unit.");
             if (!await db.Units.AnyAsync(u => u.Id == unitId)) return ServiceResult.Missing();
@@ -147,8 +180,7 @@ namespace Troy_Web_Property_Manager.Services
             // Remember the latest details as defaults for the applicant's next application.
             var defaults = application.Applicant;
             (defaults.Name, defaults.Phone, defaults.Email, defaults.CurrentAddress) = (info.Name, info.Phone, info.Email, info.CurrentAddress);
-            await db.SaveChangesAsync();
-            return ServiceResult.Ok();
+            return await SaveApplicationAsync();
         }
 
         /// <summary>Continue on Residence History: residences are stored by the modal; this validates the list and marks the section saved.</summary>
@@ -158,8 +190,7 @@ namespace Troy_Web_Property_Manager.Services
             if (error is not null) return error;
             if (application!.Residences.Count == 0) return ServiceResult.Error("Add at least one prior residence.");
             application.ResidenceHistorySaved = true;
-            await db.SaveChangesAsync();
-            return ServiceResult.Ok();
+            return await SaveApplicationAsync();
         }
 
         public Task<ResidenceViewModel?> GetResidenceAsync(int id, int residenceId, CurrentUser user) =>
@@ -203,8 +234,7 @@ namespace Troy_Web_Property_Manager.Services
             db.Residences.Remove(residence);
             // With no residences left the section is no longer complete, so Submit waits until it's saved again.
             if (application.Residences.Count == 0) application.ResidenceHistorySaved = false;
-            await db.SaveChangesAsync();
-            return ServiceResult.Ok();
+            return await SaveApplicationAsync();
         }
 
         public async Task<ServiceResult> SubmitAsync(int id, CurrentUser user)
@@ -222,8 +252,7 @@ namespace Troy_Web_Property_Manager.Services
             }
             ChangeStatus(application, ApplicationStatus.Submitted, user);
             application.Submitted = DateTime.Now;
-            await db.SaveChangesAsync();
-            return ServiceResult.Ok();
+            return await SaveApplicationAsync();
         }
 
         public async Task<ServiceResult> WithdrawAsync(int id, CurrentUser user)
@@ -235,8 +264,7 @@ namespace Troy_Web_Property_Manager.Services
                 return ServiceResult.Error("This application can't be withdrawn.");
             }
             ChangeStatus(application, ApplicationStatus.Withdrawn, user);
-            await db.SaveChangesAsync();
-            return ServiceResult.Ok();
+            return await SaveApplicationAsync();
         }
 
         // ---------------- Property manager ----------------
@@ -256,22 +284,18 @@ namespace Troy_Web_Property_Manager.Services
             {
                 return await ReviewInTransactionAsync(id, model, user);
             }
-            catch (Exception ex) when (IsDeadlock(ex))
+            catch (Exception ex) when (SqlErrors.IsDeadlock(ex))
             {
                 // Another review touching the same unit or application won the race; this one was rolled back.
                 db.ChangeTracker.Clear();
                 return ServiceResult.Error("Another review of this unit was saved at the same time. Reload the page and try again.");
             }
-        }
-
-        /// <summary>SQL Server error 1205: chosen as the deadlock victim. EF may wrap it in a DbUpdateException.</summary>
-        private static bool IsDeadlock(Exception ex)
-        {
-            for (Exception? e = ex; e is not null; e = e.InnerException)
+            catch (DbUpdateConcurrencyException)
             {
-                if (e is Microsoft.Data.SqlClient.SqlException { Number: 1205 }) return true;
+                // The status changed after it was read (e.g. the applicant withdrew); the transaction was rolled back.
+                db.ChangeTracker.Clear();
+                return ServiceResult.Error("This application was changed by someone else. Reload the page and try again.");
             }
-            return false;
         }
 
         private async Task<ServiceResult> ReviewInTransactionAsync(int id, ReviewViewModel model, CurrentUser user)

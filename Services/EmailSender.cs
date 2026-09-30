@@ -5,25 +5,27 @@ using SendGrid.Helpers.Mail;
 
 namespace Troy_Web_Property_Manager.Services
 {
+    /// <summary>Registered as a singleton so the one SendGridClient (and its HttpClient) is reused for every email.</summary>
     public class EmailSender : IEmailSender
     {
         private readonly SendGridOptions _options;
         private readonly ILogger<EmailSender> _logger;
+        private readonly SendGridClient _client;
 
         public EmailSender(IOptions<SendGridOptions> options, ILogger<EmailSender> logger)
         {
             _options = options.Value;
             _logger = logger;
+            _client = new SendGridClient(_options.ApiKey);
         }
 
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
-            var client = new SendGridClient(_options.ApiKey);
+            // HTML only: the Identity messages are HTML, and sending them as the plain-text part would show raw tags.
             var msg = new SendGridMessage
             {
                 From = new EmailAddress(_options.FromEmail, _options.FromName),
                 Subject = subject,
-                PlainTextContent = htmlMessage,
                 HtmlContent = htmlMessage
             };
             msg.AddTo(new EmailAddress(email));
@@ -31,7 +33,7 @@ namespace Troy_Web_Property_Manager.Services
             // SendGrid rewrites links for click tracking, which can break the confirmation token.
             msg.SetClickTracking(false, false);
 
-            var response = await client.SendEmailAsync(msg);
+            var response = await _client.SendEmailAsync(msg);
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Body.ReadAsStringAsync();

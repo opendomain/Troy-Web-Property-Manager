@@ -120,7 +120,15 @@ namespace Troy_Web_Property_Manager.Services
             unit.MonthlyRent = model.MonthlyRent!.Value;
             unit.UnitTypeId = type.Id;
             if (model.Id is null) db.Units.Add(unit);
-            await db.SaveChangesAsync();
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
+            {
+                // Another save took the same number between the check above and this insert/update.
+                return ServiceResult.Error("This unit number already exists at the property.", nameof(model.UnitNumber));
+            }
             return ServiceResult.Ok(unit.Id);
         }
         public async Task<ServiceResult> DeleteUnitAsync(int id)

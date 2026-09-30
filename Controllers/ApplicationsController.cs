@@ -179,7 +179,11 @@ namespace Troy_Web_Property_Manager.Controllers
         // ---------------- Withdraw (modal) ----------------
 
         [Authorize(Roles = AppRoles.Applicant)]
-        public IActionResult Withdraw(int id) => PartialView("_Confirm", ConfirmWithdraw(id));
+        public async Task<IActionResult> Withdraw(int id)
+        {
+            if ((await applications.GetEditorAsync(id, null, CurrentUser))?.CanWithdraw != true) return NotFound();
+            return PartialView("_Confirm", ConfirmWithdraw(id));
+        }
 
         [HttpPost, ActionName(nameof(Withdraw)), Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> WithdrawConfirmed(int id)
@@ -216,7 +220,7 @@ namespace Troy_Web_Property_Manager.Controllers
             {
                 SetMessage(model.Outcome switch
                 {
-                    ReviewOutcome.Approve => "Application approved; a 12-month lease was created.",
+                    ReviewOutcome.Approve => $"Application approved; a {LeaseRules.TermMonths}-month lease was created.",
                     ReviewOutcome.Return => "Application returned to the applicant.",
                     _ => "Application denied."
                 });

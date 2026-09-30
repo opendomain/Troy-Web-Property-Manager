@@ -25,7 +25,7 @@ namespace Troy_Web_Property_Manager
                 .AddEntityFrameworkStores<ApplicationDbContext>();
 
             builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
-            builder.Services.AddTransient<IEmailSender, EmailSender>();
+            builder.Services.AddSingleton<IEmailSender, EmailSender>();
 
             builder.Services.AddRazorPages();
 

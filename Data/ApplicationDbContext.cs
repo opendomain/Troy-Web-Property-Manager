@@ -126,6 +126,17 @@ namespace Troy_Web_Property_Manager.Data
                 entity.Property(e => e.Submitted).HasColumnType("datetime");
                 entity.Property(e => e.UnitId).HasColumnName("UnitID");
 
+                // Every update checks the status it read is still current, so concurrent status changes
+                // (e.g. a withdraw racing an approval) fail instead of silently overwriting each other.
+                entity.Property(e => e.Status).IsConcurrencyToken();
+
+                // At most one open (Draft, Submitted or Returned) application per applicant and unit.
+                entity.HasIndex(e => new { e.ApplicantId, e.UnitId }, "IX_RentalApplications_OpenPerApplicantUnit")
+                    .IsUnique()
+                    .HasFilter("[Status] IN (1, 2, 3)");
+                // Kept explicitly: the filtered index above only covers open applications, so it can't serve the FK lookups.
+                entity.HasIndex(e => e.ApplicantId, "IX_RentalApplications_ApplicantID");
+
                 entity.HasOne(d => d.Applicant).WithMany(p => p.RentalApplications)
                     .HasForeignKey(d => d.ApplicantId)
                     .OnDelete(DeleteBehavior.ClientSetNull)
@@ -173,11 +184,15 @@ namespace Troy_Web_Property_Manager.Data
                 entity.ToTable("Unit");
 
                 entity.Property(e => e.Id).HasColumnName("id");
-                // DB defaults are kept for raw SQL inserts; EF always sends the value so 0 bedrooms / 0 rent are stored as-is
+                // DB defaults are kept for raw SQL inserts; EF always sends the value, so 0 bedrooms is stored as-is
+                // instead of being replaced by the default of 1.
                 entity.Property(e => e.Bedrooms).HasDefaultValue(1, "DF_Unit_Bedrooms").ValueGeneratedNever();
                 entity.Property(e => e.MonthlyRent).HasPrecision(10, 2).HasDefaultValue(0m, "DF_Unit_Rent").ValueGeneratedNever();
                 entity.Property(e => e.UnitNumber).HasMaxLength(50);
                 entity.Property(e => e.UnitTypeId).HasColumnName("UnitTypeID");
+
+                // Unit numbers are unique within a property.
+                entity.HasIndex(e => new { e.PropertyId, e.UnitNumber }).IsUnique();
 
                 entity.HasOne(d => d.Property).WithMany(p => p.Units)
                     .HasForeignKey(d => d.PropertyId)
