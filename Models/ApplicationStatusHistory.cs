@@ -7,9 +7,9 @@ public partial class ApplicationStatusHistory
 {
     public int Id { get; set; }
 
-    public int PreviousStatus { get; set; }
+    public long PreviousStatus { get; set; }
 
-    public int NewStatus { get; set; }
+    public long NewStatus { get; set; }
 
     /// <summary>Optional for status changes; required by the review rules for Return and Deny.</summary>
     public string? Comment { get; set; }
@@ -24,5 +24,5 @@ public partial class ApplicationStatusHistory
 
     public int RentalApplicationId { get; set; }
 
-    public virtual RentApplication RentalApplication { get; set; } = null!;
+    public virtual RentalApplication RentalApplication { get; set; } = null!;
 }

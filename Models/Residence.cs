@@ -17,5 +17,5 @@ public partial class Residence
 
     public int RentalApplicationId { get; set; }
 
-    public virtual RentApplication RentalApplication { get; set; } = null!;
+    public virtual RentalApplication RentalApplication { get; set; } = null!;
 }

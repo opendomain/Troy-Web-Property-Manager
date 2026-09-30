@@ -11,7 +11,7 @@ public partial class Unit
 
     public int Bedrooms { get; set; } = 1;
 
-    public decimal Rent { get; set; }
+    public decimal MonthlyRent { get; set; }
 
     public int UnitTypeId { get; set; }
 
@@ -21,7 +21,7 @@ public partial class Unit
 
     public virtual Property Property { get; set; } = null!;
 
-    public virtual ICollection<RentApplication> RentApplications { get; set; } = new List<RentApplication>();
+    public virtual ICollection<RentalApplication> RentalApplications { get; set; } = new List<RentalApplication>();
 
     public virtual UnitType UnitType { get; set; } = null!;
 }

@@ -15,7 +15,7 @@ public partial class Lease
 
     public DateTime EndDate { get; set; }
 
-    public virtual RentApplication RentalApplication { get; set; } = null!;
+    public virtual RentalApplication RentalApplication { get; set; } = null!;
 
     public virtual Unit Unit { get; set; } = null!;
 }

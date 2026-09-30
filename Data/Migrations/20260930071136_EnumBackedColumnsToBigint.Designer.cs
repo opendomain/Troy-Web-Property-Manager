@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Troy_Web_Property_Manager.Data;
 
@@ -11,9 +12,11 @@ using Troy_Web_Property_Manager.Data;
 namespace Troy_Web_Property_Manager.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260930071136_EnumBackedColumnsToBigint")]
+    partial class EnumBackedColumnsToBigint
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -417,7 +420,6 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                         .HasColumnType("bit");
 
                     b.Property<long>("Status")
-                        .IsConcurrencyToken()
                         .HasColumnType("bigint");
 
                     b.Property<DateTime?>("Submitted")
@@ -429,15 +431,11 @@ namespace Troy_Web_Property_Manager.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ApplicantId");
+
                     b.HasIndex("Status");
 
                     b.HasIndex("UnitId");
-
-                    b.HasIndex(new[] { "ApplicantId" }, "IX_RentalApplications_ApplicantID");
-
-                    b.HasIndex(new[] { "ApplicantId", "UnitId" }, "IX_RentalApplications_OpenPerApplicantUnit")
-                        .IsUnique()
-                        .HasFilter("[Status] IN (1, 2, 3)");
 
                     b.ToTable("RentalApplications", (string)null);
                 });
@@ -534,10 +532,9 @@ namespace Troy_Web_Property_Manager.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UnitTypeId");
+                    b.HasIndex("PropertyId");
 
-                    b.HasIndex("PropertyId", "UnitNumber")
-                        .IsUnique();
+                    b.HasIndex("UnitTypeId");
 
                     b.ToTable("Unit", (string)null);
                 });

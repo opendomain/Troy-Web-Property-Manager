@@ -3,13 +3,13 @@ using System.Collections.Generic;
 
 namespace Troy_Web_Property_Manager.Models;
 
-public partial class RentApplication
+public partial class RentalApplication
 {
     public int Id { get; set; }
 
     public int UnitId { get; set; }
 
-    public int Status { get; set; }
+    public long Status { get; set; }
 
     public DateTime Created { get; set; }
 
@@ -17,14 +17,17 @@ public partial class RentApplication
     public DateTime? Submitted { get; set; }
 
     /// <summary>Set when the Applicant Information section has been saved as valid.</summary>
-    public bool ApplicantSectionSaved { get; set; }
+    public bool ApplicantInformationSaved { get; set; }
 
     /// <summary>Set when the Residence History section has been saved as valid.</summary>
-    public bool ResidenceSectionSaved { get; set; }
+    public bool ResidenceHistorySaved { get; set; }
 
     public int ApplicantId { get; set; }
 
     public virtual Applicant Applicant { get; set; } = null!;
+
+    /// <summary>This application's Applicant Information section; null until the section is first saved.</summary>
+    public virtual ApplicantInformation? ApplicantInformation { get; set; }
 
     public virtual ICollection<ApplicationStatusHistory> ApplicationStatusHistories { get; set; } = new List<ApplicationStatusHistory>();
 

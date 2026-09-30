@@ -37,7 +37,7 @@
 
             @switch (Model.Section)
             {
-                case ApplicationSection.Applicant:
+                case ApplicationSection.ApplicantInformation:
                     <partial name="_ApplicantInformation" model="Model" />
                     break;
                 case ApplicationSection.ResidenceHistory:
@@ -51,7 +51,7 @@
             <div class="d-flex gap-2 mt-3">
                 @if (Model.CanEdit)
                 {
-                    if (Model.Section != ApplicationSection.Applicant)
+                    if (Model.Section != ApplicationSection.ApplicantInformation)
                     {
                         @* formnovalidate: Back skips client-side validation because it doesn't save. *@
                         <button type="submit" name="command" value="back" class="btn btn-outline-secondary" formnovalidate>Back</button>
@@ -68,7 +68,7 @@
                 else
                 {
                     @* Read-only viewers only navigate; nothing is posted. *@
-                    if (Model.Section != ApplicationSection.Applicant)
+                    if (Model.Section != ApplicationSection.ApplicantInformation)
                     {
                         <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Previous(Model.Section)">Back</a>
                     }

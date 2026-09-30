@@ -9,7 +9,7 @@ public partial class UnitType
 
     public string Name { get; set; } = null!;
 
-    public bool Active { get; set; }
+    public bool IsActive { get; set; }
 
     public virtual ICollection<Unit> Units { get; set; } = new List<Unit>();
 }

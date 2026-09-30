@@ -10,15 +10,21 @@ namespace Troy_Web_Property_Manager.Controllers
 {
     /// <summary>Applicants see their own applications; property managers see all of them.</summary>
     [Authorize(Roles = AppRoles.Applicant + "," + AppRoles.PropertyManager)]
-    public class ApplicationsController(ApplicationService applications) : AppController
+    public class ApplicationsController(ApplicationService applications, PropertyService properties) : AppController
     {
-        private const string InfoPrefix = nameof(ApplicationEditorViewModel.Applicant) + ".";
+        private const string InfoPrefix = nameof(ApplicationEditorViewModel.ApplicantInformation) + ".";
         private const string ResidenceHistoryTarget = "#residence-history";
 
         // ---------------- List ----------------
 
-        // TODO: Step 14 replaces this with the filtered list (ApplicationListViewModel) and its view.
-        public IActionResult Index() => View(CurrentUser);
+        /// <summary>Applicants see their own applications, managers all of them; the filters run in SQL.</summary>
+        public async Task<IActionResult> Index(ApplicationStatus? status, int? propertyId) => View(new ApplicationListViewModel
+        {
+            Status = status,
+            PropertyId = propertyId,
+            Items = await applications.ListAsync(status, propertyId, CurrentUser),
+            Properties = await properties.GetPropertyOptionsAsync(propertyId)
+        });
 
         // ---------------- Start ----------------
 
@@ -56,11 +62,11 @@ namespace Troy_Web_Property_Manager.Controllers
 
                 case "continue":
                     ServiceResult result;
-                    if (model.Section == ApplicationSection.Applicant)
+                    if (model.Section == ApplicationSection.ApplicantInformation)
                     {
                         // Persist only when this section is valid; otherwise re-render it with the errors.
                         if (!SectionIsValid(InfoPrefix)) return await RedisplayAsync(id, model);
-                        result = await applications.SaveApplicantAsync(id, model.Applicant, CurrentUser);
+                        result = await applications.SaveApplicantInformationAsync(id, model.ApplicantInformation, CurrentUser);
                     }
                     else if (model.Section == ApplicationSection.ResidenceHistory)
                     {
@@ -70,7 +76,7 @@ namespace Troy_Web_Property_Manager.Controllers
 
                     if (result.NotFound) return NotFound();
                     if (result.Succeeded) return RedirectToAction(nameof(Edit), new { id, section = ApplicationWorkflow.Next(model.Section) });
-                    AddErrors(result, model.Section == ApplicationSection.Applicant ? InfoPrefix : "");
+                    AddErrors(result, model.Section == ApplicationSection.ApplicantInformation ? InfoPrefix : "");
                     return await RedisplayAsync(id, model);
 
                 case "submit":
@@ -98,9 +104,9 @@ namespace Troy_Web_Property_Manager.Controllers
             var model = await applications.GetEditorAsync(id, posted.Section, CurrentUser);
             if (model is null) return NotFound();
 
-            if (posted.Section == ApplicationSection.Applicant)
+            if (posted.Section == ApplicationSection.ApplicantInformation)
             {
-                model.Applicant = posted.Applicant;
+                model.ApplicantInformation = posted.ApplicantInformation;
             }
             else
             {
@@ -173,7 +179,11 @@ namespace Troy_Web_Property_Manager.Controllers
         // ---------------- Withdraw (modal) ----------------
 
         [Authorize(Roles = AppRoles.Applicant)]
-        public IActionResult Withdraw(int id) => PartialView("_Confirm", ConfirmWithdraw(id));
+        public async Task<IActionResult> Withdraw(int id)
+        {
+            if ((await applications.GetEditorAsync(id, null, CurrentUser))?.CanWithdraw != true) return NotFound();
+            return PartialView("_Confirm", ConfirmWithdraw(id));
+        }
 
         [HttpPost, ActionName(nameof(Withdraw)), Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> WithdrawConfirmed(int id)
@@ -210,7 +220,7 @@ namespace Troy_Web_Property_Manager.Controllers
             {
                 SetMessage(model.Outcome switch
                 {
-                    ReviewOutcome.Approve => "Application approved; a 12-month lease was created.",
+                    ReviewOutcome.Approve => $"Application approved; a {LeaseRules.TermMonths}-month lease was created.",
                     ReviewOutcome.Return => "Application returned to the applicant.",
                     _ => "Application denied."
                 });

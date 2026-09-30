@@ -25,7 +25,7 @@ namespace Troy_Web_Property_Manager
                 .AddEntityFrameworkStores<ApplicationDbContext>();
 
             builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
-            builder.Services.AddTransient<IEmailSender, EmailSender>();
+            builder.Services.AddSingleton<IEmailSender, EmailSender>();
 
             builder.Services.AddRazorPages();
 
@@ -108,8 +108,8 @@ namespace Troy_Web_Property_Manager
             // (the id column is an identity, hence IDENTITY_INSERT). Only missing rows are added.
             var existingStatusIds = dbContext.Statuses.Select(s => s.Id).ToHashSet();
             var missingStatuses = Enum.GetValues<ApplicationStatus>()
-                .Where(s => !existingStatusIds.Contains((int)s))
-                .Select(s => new Status { Id = (int)s, Name = s.ToString() })
+                .Where(s => !existingStatusIds.Contains((long)s))
+                .Select(s => new Status { Id = (long)s, Name = s.ToString() })
                 .ToList();
 
             if (missingStatuses.Count > 0)
@@ -124,7 +124,7 @@ namespace Troy_Web_Property_Manager
 
             // Unit types are matched by name; an inactive type stays on units that already use it
             // but can't be chosen for any other unit.
-            (string Name, bool Active)[] unitTypes =
+            (string Name, bool IsActive)[] unitTypes =
             [
                 ("Apartment", true),
                 ("Studio", true),
@@ -135,7 +135,7 @@ namespace Troy_Web_Property_Manager
             var existingUnitTypes = dbContext.UnitTypes.Select(t => t.Name).ToHashSet();
             dbContext.UnitTypes.AddRange(unitTypes
                 .Where(t => !existingUnitTypes.Contains(t.Name))
-                .Select(t => new UnitType { Name = t.Name, Active = t.Active }));
+                .Select(t => new UnitType { Name = t.Name, IsActive = t.IsActive }));
             dbContext.SaveChanges();
         }
 
