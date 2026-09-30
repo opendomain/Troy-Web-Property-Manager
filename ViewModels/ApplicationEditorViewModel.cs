@@ -120,6 +120,32 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public List<string> SubmitBlockers { get; set; } = [];
 
         /// <summary>
+        /// Rule errors on the saved Applicant Information, keyed by field ("ApplicantInformation.Phone"). The
+        /// controller puts these in ModelState so each one shows under its input. Empty until the section is saved,
+        /// and for anyone who can't edit.
+        /// </summary>
+        [BindNever] public List<FieldError> ApplicantInformationErrors { get; set; } = [];
+
+        /// <summary>
+        /// Section-level errors on Residence History (no residences yet). Each residence's own errors are on
+        /// <see cref="ResidenceViewModel.Errors"/>.
+        /// </summary>
+        [BindNever] public List<FieldError> ResidenceHistoryErrors { get; set; } = [];
+
+        /// <summary>
+        /// True if the saved section still has errors - Continue then stays put and the page offers Next instead.
+        /// </summary>
+        public bool SectionHasErrors(ApplicationSection section)
+        {
+            return section switch
+            {
+                ApplicationSection.ApplicantInformation => ApplicantInformationErrors.Count > 0,
+                ApplicationSection.ResidenceHistory => ResidenceHistoryErrors.Count > 0 || Residences.Any(r => r.Errors.Count > 0),
+                _ => false
+            };
+        }
+
+        /// <summary>
         /// Email of the property manager who has it claimed (Under Review). Managers only - always null for
         /// applicants, who just see the status.
         /// </summary>

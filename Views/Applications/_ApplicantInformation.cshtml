@@ -9,9 +9,10 @@
     Returned) and always on the Summary. Disabled inputs don't get posted, and the server rejects edits to locked
     applications anyway - this is just how it looks, not the actual security.
 
-    Validation: asp-for on "ApplicantInformation.X" gives the fields the prefixed names the controller checks, plus the
-    data-val-* attributes from the DataAnnotations. So errors show in the browser before posting, and from the server
-    (asp-validation-for) after a failed Continue.
+    Validation: asp-for on "ApplicantInformation.X" gives the fields their prefixed names plus the data-val-* attributes
+    from the DataAnnotations, so errors show in the browser as you type. The section saves even with errors; after
+    that, the controller puts the saved section's errors in ModelState under the same names, so asp-validation-for
+    shows each one under its field - here and on the Summary - until it's fixed.
 *@
 <h4>Applicant information</h4>
 <fieldset disabled="@Model.IsReadOnly">

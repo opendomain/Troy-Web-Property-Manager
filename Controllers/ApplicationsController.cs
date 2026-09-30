@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Rules;
 using Troy_Web_Property_Manager.Services;
@@ -29,8 +28,8 @@ namespace Troy_Web_Property_Manager.Controllers
     [Authorize(Roles = AppRoles.Applicant + "," + AppRoles.PropertyManager)]
     public class ApplicationsController(ApplicationService applications, PropertyService properties) : AppController
     {
-        // Section 1's ModelState keys start with this, so Continue can validate just that section.
-        private const string InfoPrefix = nameof(ApplicationEditorViewModel.ApplicantInformation) + ".";
+        // Section 1's ModelState keys start with this, so the service's field errors land on the right inputs.
+        private const string InfoPrefix = ApplicationService.ApplicantInformationPrefix;
 
         // What the residence modal refreshes when it saves. Has to match the root id in _ResidenceHistory.cshtml.
         private const string ResidenceHistoryTarget = "#residence-history";
@@ -86,7 +85,14 @@ namespace Troy_Web_Property_Manager.Controllers
         public async Task<IActionResult> Edit(int id, ApplicationSection? section)
         {
             var model = await applications.GetEditorAsync(id, section, CurrentUser);
-            return model is null ? NotFound() : View(model);
+            if (model is null) return NotFound();
+            // Errors still on the saved section go into ModelState, so each shows under its own field - on section 1
+            // and on the Summary. (Residence errors are shown on their rows from the view model.)
+            foreach (var error in model.ApplicantInformationErrors)
+            {
+                ModelState.AddModelError(error.Field, error.Message);
+            }
+            return View(model);
         }
 
         /// <summary>
@@ -108,27 +114,35 @@ namespace Troy_Web_Property_Manager.Controllers
                     return RedirectToAction(nameof(Edit), new { id, section = ApplicationWorkflow.Previous(model.Section) });
 
                 case "continue":
-                    // 4.b.i: validate this section, save it if it's good, then move on to the next one.
+                    // 4.b.i: save this section - even if it breaks its rules - then move on if it's clean.
+                    // We don't check ModelState here: the service runs the section's rules on what it saved.
                     ServiceResult result;
                     if (model.Section == ApplicationSection.ApplicantInformation)
                     {
-                        // Only look at section 1's fields. ModelState has entries for the rest of the view model too,
-                        // and we don't want those failing this section. If it's invalid, show it again with errors.
-                        if (!SectionIsValid(InfoPrefix)) return await RedisplayAsync(id, model);
                         result = await applications.SaveApplicantInformationAsync(id, model.ApplicantInformation, CurrentUser);
                     }
                     else if (model.Section == ApplicationSection.ResidenceHistory)
                     {
-                        // The modal already saved each residence. Here we just check there's at least one and mark
-                        // the section as saved.
+                        // The modal already saved each residence. Here we just mark the section as saved.
                         result = await applications.SaveResidenceHistoryAsync(id, CurrentUser);
                     }
                     else return BadRequest(); // there's no Continue on the Summary, so someone's crafting posts
 
                     if (IsAccessFailure(result)) return Failure(result);
-                    if (result.Succeeded) return RedirectToAction(nameof(Edit), new { id, section = ApplicationWorkflow.Next(model.Section) });
+                    if (result.Succeeded)
+                    {
+                        if (result.Unresolved.Count == 0)
+                        {
+                            return RedirectToAction(nameof(Edit), new { id, section = ApplicationWorkflow.Next(model.Section) });
+                        }
+                        // Saved with errors: stay on this section. The GET puts the errors on their fields (from what
+                        // was saved, so a refresh shows the same thing), and the page offers Next to carry on anyway.
+                        SetError("Saved, but some fields still need fixing before you can submit.");
+                        return RedirectToAction(nameof(Edit), new { id, section = model.Section });
+                    }
 
-                    // Errors from the service (e.g. "no longer editable", someone else changed it) show on the same section.
+                    // Not saved (too long for the database, "no longer editable", someone else changed it): show the
+                    // same section with what they typed and the errors.
                     AddErrors(result, model.Section == ApplicationSection.ApplicantInformation ? InfoPrefix : "");
                     return await RedisplayAsync(id, model);
 
@@ -148,12 +162,6 @@ namespace Troy_Web_Property_Manager.Controllers
                     // Our buttons never send anything else, so this is a hand-made request.
                     return BadRequest();
             }
-        }
-
-        /// <summary>True if nothing in ModelState under this prefix is invalid.</summary>
-        private bool SectionIsValid(string prefix)
-        {
-            return ModelState.Where(e => e.Key.StartsWith(prefix)).All(e => e.Value!.ValidationState != ModelValidationState.Invalid);
         }
 
         /// <summary>
@@ -207,7 +215,10 @@ namespace Troy_Web_Property_Manager.Controllers
             return (await applications.GetEditorAsync(id, ApplicationSection.ResidenceHistory, CurrentUser))?.CanEdit == true;
         }
 
-        /// <summary>Residence form for the modal - add if there's no <paramref name="residenceId"/>, otherwise edit.</summary>
+        /// <summary>
+        /// Residence form for the modal - add if there's no <paramref name="residenceId"/>, otherwise edit. When
+        /// editing, any errors still on the saved residence show under their fields straight away.
+        /// </summary>
         [Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> Residence(int id, int? residenceId)
         {
@@ -215,21 +226,42 @@ namespace Troy_Web_Property_Manager.Controllers
             var model = residenceId is null
                 ? new ResidenceViewModel { ApplicationId = id }
                 : await applications.GetResidenceAsync(id, residenceId.Value, CurrentUser);
-            return model is null ? NotFound() : PartialView("_ResidenceForm", model);
+            if (model is null) return NotFound();
+            foreach (var error in model.Errors)
+            {
+                ModelState.AddModelError(error.Field, error.Message);
+            }
+            return PartialView("_ResidenceForm", model);
         }
 
-        /// <summary>Saves a residence from the modal.</summary>
+        /// <summary>
+        /// Saves a residence from the modal - even if it breaks the residence rules. Clean: the modal closes and the
+        /// residence list refreshes. Saved with errors: the modal stays open on the saved residence with the errors
+        /// under their fields, and the list behind it refreshes too. Only text too long for the database isn't saved.
+        /// </summary>
         [HttpPost, Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> Residence(int id, ResidenceViewModel model)
         {
-            // Always take the application id from the route (ApplicationId is [BindNever]).
+            // Always take the application id from the route (ApplicationId is [BindNever]). We don't check ModelState -
+            // the service runs the residence rules on what it saves.
             model.ApplicationId = id;
-            if (!ModelState.IsValid) return ModalInvalid("_ResidenceForm", model);
 
             var result = await applications.SaveResidenceAsync(id, model, CurrentUser);
             if (IsAccessFailure(result)) return Failure(result);
-            if (result.Succeeded) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
-            return ModalFailed("_ResidenceForm", model, result);
+            if (!result.Succeeded) return ModalFailed("_ResidenceForm", model, result);
+            if (result.Unresolved.Count == 0) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
+
+            // Redraw on the saved residence, so saving again edits it instead of adding a second one. Clearing
+            // ModelState drops the posted ResidenceId (the hidden field would otherwise keep the old empty value) and
+            // any binding errors, which the residence rules report in plainer words anyway.
+            ModelState.Clear();
+            model.ResidenceId = result.Id;
+            model.SavedWithErrors = true;
+            foreach (var error in result.Unresolved)
+            {
+                ModelState.AddModelError(error.Field, error.Message);
+            }
+            return PartialView("_ResidenceForm", model);
         }
 
         /// <summary>"Are you sure?" modal for removing a residence (uses the shared _Confirm partial).</summary>

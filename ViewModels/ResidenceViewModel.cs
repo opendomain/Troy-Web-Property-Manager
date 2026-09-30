@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc.ModelBinding;
 using System.ComponentModel.DataAnnotations;
+using Troy_Web_Property_Manager.Rules;
 
 namespace Troy_Web_Property_Manager.ViewModels
 {
@@ -8,10 +9,12 @@ namespace Troy_Web_Property_Manager.ViewModels
     /// <c>_ResidenceForm.cshtml</c>, and also used for the read-only rows in the residence table.
     /// </summary>
     /// <remarks>
-    /// <para>Single-field rules are DataAnnotations (checked in the browser and on the server). "Move-out has to be on
-    /// or after move-in" involves two fields, so that one's done with <see cref="IValidatableObject"/>. MVC calls
-    /// <see cref="Validate"/> once the attributes pass, and we hang the error on <see cref="MoveOutDate"/> so it shows
-    /// under that field when the modal redraws.</para>
+    /// <para>These are the one set of rules for a residence. Single-field rules are DataAnnotations; "move-out has to
+    /// be on or after move-in" involves two fields, so that one's <see cref="IValidatableObject"/>, and its error hangs
+    /// on <see cref="MoveOutDate"/> so it shows under that field. <see cref="SectionValidator"/> runs them all against
+    /// the saved residence for the modal, the residence table, the Summary and Submit.</para>
+    /// <para>A residence saves even when it breaks these rules (except text longer than its column) - the modal stays
+    /// open with the errors, and Submit waits until they're fixed.</para>
     /// <para><see cref="ApplicationId"/> is <c>[BindNever]</c> - the controller sets it from the route.
     /// <see cref="ResidenceId"/> does get posted (hidden field) so we know add from edit, but the service only looks
     /// for it in the current user's own application, so a faked id for someone else's residence finds nothing.</para>
@@ -31,6 +34,15 @@ namespace Troy_Web_Property_Manager.ViewModels
         // DateOnly since these are just calendar dates, no time. They're stored in "date" columns.
         [Required, DataType(DataType.Date), Display(Name = "Move-in date")] public DateOnly? MoveInDate { get; set; }
         [Required, DataType(DataType.Date), Display(Name = "Move-out date")] public DateOnly? MoveOutDate { get; set; }
+
+        /// <summary>
+        /// What's still wrong with the saved residence, from <see cref="SectionValidator"/>. Shown under its row in the
+        /// residence table. Never bound from a post.
+        /// </summary>
+        [BindNever] public List<FieldError> Errors { get; set; } = [];
+
+        /// <summary>True when the modal is redrawn right after a save that left errors, so it can say it was saved.</summary>
+        [BindNever] public bool SavedWithErrors { get; set; }
 
         /// <summary>You can't move out before you moved in.</summary>
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)

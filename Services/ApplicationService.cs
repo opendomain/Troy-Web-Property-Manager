@@ -26,9 +26,19 @@ namespace Troy_Web_Property_Manager.Services
     /// approves). <c>RentalApplication.Status</c> is a concurrency token, so a save based on an out-of-date status fails
     /// instead of overwriting (see <see cref="SaveApplicationAsync"/>). Approvals also run in a serializable
     /// transaction so two of them can't both create a lease on the same unit.</para>
+    /// <para>Sections save even when they break their rules (the one exception is text too long for its column).
+    /// <see cref="CheckSections"/> runs each section's rules against what's saved and turns the result into field
+    /// errors for the page and the one list of submit blockers - the editor and <see cref="SubmitAsync"/> both use it,
+    /// so what the Summary says and what Submit enforces can't drift apart.</para>
     /// </remarks>
     public class ApplicationService(ApplicationDbContext db)
     {
+        /// <summary>Section 1's field keys start with this, matching the input names on the application page.</summary>
+        public const string ApplicantInformationPrefix = nameof(ApplicationEditorViewModel.ApplicantInformation) + ".";
+
+        /// <summary>Key for Residence History's section-level error (no residences).</summary>
+        public const string ResidencesKey = nameof(ApplicationEditorViewModel.Residences);
+
         /// <summary>
         /// Who can see what, in one spot: managers see every application that has been submitted at least once,
         /// applicants only their own. A draft that was never submitted is still private to the applicant. Every query
@@ -175,11 +185,9 @@ namespace Troy_Web_Property_Manager.Services
             // Decided here on the server (4.d): only the applicant can edit, and only while it's Draft or Returned.
             // (Visible() already made sure an applicant only gets here for their own application.)
             var canEdit = !user.IsManager && ApplicationWorkflow.IsEditable((ApplicationStatus)application.Status);
-            // What's stopping Submit, so the Summary can list it. Only worth the lease query if they can edit.
-            var blockers = canEdit
-                ? SubmissionRules.GetBlockers(application.ApplicantInformationSaved, application.ResidenceHistorySaved,
-                    application.Residences.Count, await UnitHasActiveLeaseAsync(application.UnitId))
-                : [];
+            // Field errors and what's stopping Submit, so the page and the Summary can show them. Only for the
+            // applicant while they can still fix things (and only then is the lease query worth it).
+            var checks = canEdit ? CheckSections(application, await UnitHasActiveLeaseAsync(application.UnitId)) : null;
             // Editors start at section 1; everyone else lands on the read-only Summary.
             var current = section ?? (canEdit ? ApplicationSection.ApplicantInformation : ApplicationSection.Summary);
 
@@ -220,19 +228,12 @@ namespace Troy_Web_Property_Manager.Services
                     Email = info.Email,
                     CurrentAddress = info.CurrentAddress
                 },
-                Residences = application.Residences.OrderByDescending(r => r.MoveInDate).Select(r => new ResidenceViewModel
-                {
-                    ApplicationId = application.Id,
-                    ResidenceId = r.Id,
-                    Address = r.Address,
-                    LandlordName = r.LandlordName,
-                    LandlordPhone = r.LandlordPhone,
-                    MoveInDate = r.MoveInDate,
-                    MoveOutDate = r.MoveOutDate
-                }).ToList(),
+                Residences = checks?.Residences ?? OrderedResidences(application).Select(r => ToViewModel(r, withErrors: false)).ToList(),
                 ApplicantInformationSaved = application.ApplicantInformationSaved,
                 ResidenceHistorySaved = application.ResidenceHistorySaved,
-                SubmitBlockers = blockers,
+                SubmitBlockers = checks?.Blockers ?? [],
+                ApplicantInformationErrors = checks?.ApplicantInformation ?? [],
+                ResidenceHistoryErrors = checks?.ResidenceHistory ?? [],
                 CanEdit = canEdit,
                 // The Summary is always read-only (4.a.iii). The other sections are read-only if you can't edit.
                 IsReadOnly = !canEdit || current == ApplicationSection.Summary,
@@ -245,83 +246,95 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>
-        /// Continue on section 1 (4.b.i): saves the Applicant Information and marks the section done. The controller
-        /// only calls this after validation passes, but we still re-check ownership and status here, so a post
-        /// against an already-submitted application gets turned away (4.d).
+        /// Continue on section 1 (4.b.i): saves the Applicant Information and marks the section saved - even if it
+        /// breaks the section's rules. The errors come back in <see cref="ServiceResult.Unresolved"/> and block Submit
+        /// until they're fixed. Only text too long for its column stops the save. We re-check ownership and status
+        /// here, so a post against an already-submitted application gets turned away (4.d).
         /// </summary>
         public async Task<ServiceResult> SaveApplicantInformationAsync(int id, ApplicantInformationViewModel model, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
+            if (TooLongToSave(model) is { } tooLong) return tooLong;
 
-            // The caller already validated the model, so the required fields are there.
             // This only saves to this application - other ones (like already submitted ones) aren't touched.
             var info = application!.ApplicantInformation ??= new ApplicantInformation();
-            info.Name = model.Name!.Trim();
-            info.Phone = model.Phone!.Trim();
-            info.Email = model.Email!.Trim();
-            info.CurrentAddress = model.CurrentAddress!.Trim();
+            info.Name = Clean(model.Name);
+            info.Phone = Clean(model.Phone);
+            info.Email = Clean(model.Email);
+            info.CurrentAddress = Clean(model.CurrentAddress);
             application.ApplicantInformationSaved = true;
 
-            // Remember these details to pre-fill their next application.
-            var defaults = application.Applicant;
-            (defaults.Name, defaults.Phone, defaults.Email, defaults.CurrentAddress) = (info.Name, info.Phone, info.Email, info.CurrentAddress);
+            // Check what was actually saved (trimmed), not what was posted.
+            var remaining = SectionValidator.Validate(ToViewModel(info));
+            if (remaining.Count == 0)
+            {
+                // Remember these details to pre-fill their next application - but only once they're valid, so a
+                // half-finished section doesn't get copied into the next one.
+                var defaults = application.Applicant;
+                (defaults.Name, defaults.Phone, defaults.Email, defaults.CurrentAddress) = (info.Name, info.Phone, info.Email, info.CurrentAddress);
+            }
             // If section 1 was already saved, the application row itself doesn't change, so force the status check.
             GuardStatus(application);
-            return await SaveApplicationAsync();
+            var saved = await SaveApplicationAsync();
+            return saved.Succeeded ? ServiceResult.Saved(remaining) : saved;
         }
 
         /// <summary>
-        /// Continue on Residence History (4.b.i). The modal already saved each residence (4.c), so this just checks
-        /// there's at least one and marks the section done.
+        /// Continue on Residence History (4.b.i). The modal already saved each residence (4.c), so this marks the
+        /// section saved - even with no residences, or residences that still have errors. Those come back in
+        /// <see cref="ServiceResult.Unresolved"/> and block Submit until they're fixed.
         /// </summary>
         public async Task<ServiceResult> SaveResidenceHistoryAsync(int id, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            if (application!.Residences.Count == 0) return ServiceResult.Error("Add at least one prior residence.");
-            application.ResidenceHistorySaved = true;
-            return await SaveApplicationAsync();
+            application!.ResidenceHistorySaved = true;
+            GuardStatus(application);
+            var saved = await SaveApplicationAsync();
+            if (!saved.Succeeded) return saved;
+
+            var checks = CheckSections(application, unitHasActiveLease: false);
+            return ServiceResult.Saved([.. checks.ResidenceHistory, .. checks.Residences.SelectMany(r => r.Errors)]);
         }
 
         /// <summary>
         /// Gets one residence for the edit modal. We go through <see cref="Visible"/> and then to that application's
         /// residences, so a residence id from someone else's application just comes back empty.
         /// </summary>
-        public Task<ResidenceViewModel?> GetResidenceAsync(int id, int residenceId, CurrentUser user)
+        /// <remarks>It comes with its rule errors, so the modal can show what still needs fixing.</remarks>
+        public async Task<ResidenceViewModel?> GetResidenceAsync(int id, int residenceId, CurrentUser user)
         {
-            return Visible(user).Where(a => a.Id == id).SelectMany(a => a.Residences).Where(r => r.Id == residenceId)
-                .Select(r => new ResidenceViewModel
-                {
-                    ApplicationId = id,
-                    ResidenceId = r.Id,
-                    Address = r.Address,
-                    LandlordName = r.LandlordName,
-                    LandlordPhone = r.LandlordPhone,
-                    MoveInDate = r.MoveInDate,
-                    MoveOutDate = r.MoveOutDate
-                }).FirstOrDefaultAsync();
+            var residence = await Visible(user).AsNoTracking().Where(a => a.Id == id).SelectMany(a => a.Residences)
+                .FirstOrDefaultAsync(r => r.Id == residenceId);
+            return residence is null ? null : ToViewModel(residence, withErrors: true);
         }
 
-        /// <summary>Adds or edits a residence from the modal (4.c). Only while the application can still be edited.</summary>
+        /// <summary>
+        /// Adds or edits a residence from the modal (4.c). Only while the application can still be edited. It saves
+        /// even if it breaks the residence rules - the result carries the new residence's id and whatever errors are
+        /// left, so the modal can stay open on the saved residence and show them.
+        /// </summary>
         public async Task<ServiceResult> SaveResidenceAsync(int id, ResidenceViewModel model, CurrentUser user)
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
+            if (TooLongToSave(model) is { } tooLong) return tooLong;
             // Look the residence up in this application's residences only, not by id across the whole table,
             // so a faked ResidenceId can't reach into another application.
             var residence = model.ResidenceId is null
                 ? new Residence()
                 : application!.Residences.FirstOrDefault(r => r.Id == model.ResidenceId);
             if (residence is null) return ServiceResult.Missing();
-            residence.Address = model.Address!.Trim();
-            residence.LandlordName = model.LandlordName!.Trim();
-            residence.LandlordPhone = model.LandlordPhone!.Trim();
-            residence.MoveInDate = model.MoveInDate!.Value;
-            residence.MoveOutDate = model.MoveOutDate!.Value;
+            residence.Address = Clean(model.Address);
+            residence.LandlordName = Clean(model.LandlordName);
+            residence.LandlordPhone = Clean(model.LandlordPhone);
+            residence.MoveInDate = model.MoveInDate;
+            residence.MoveOutDate = model.MoveOutDate;
             if (model.ResidenceId is null) application!.Residences.Add(residence);
             GuardStatus(application!);
-            return await SaveApplicationAsync();
+            var saved = await SaveApplicationAsync();
+            return saved.Succeeded ? ServiceResult.Saved(SectionValidator.Validate(ToViewModel(residence)), residence.Id) : saved;
         }
 
         /// <summary>Removes a residence from the modal (4.c). Only while the application can still be edited.</summary>
@@ -333,8 +346,8 @@ namespace Troy_Web_Property_Manager.Services
             if (residence is null) return ServiceResult.Missing();
             application.Residences.Remove(residence);
             db.Residences.Remove(residence);
-            // No residences left means the section isn't complete anymore, so Submit has to wait until it's saved again.
-            if (application.Residences.Count == 0) application.ResidenceHistorySaved = false;
+            // If that was the last one, the section stays saved but now has the "add at least one" error, which blocks
+            // Submit (see CheckSections).
             GuardStatus(application);
             return await SaveApplicationAsync();
         }
@@ -347,11 +360,10 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            // 4.b.ii / 4.e: both sections saved, and the unit not leased. The Summary shows the same list and the page
-            // disables the button, but this is the check that actually matters. We leave any other open
-            // applications for the unit alone.
-            var blockers = SubmissionRules.GetBlockers(application!.ApplicantInformationSaved, application.ResidenceHistorySaved,
-                application.Residences.Count, await UnitHasActiveLeaseAsync(application.UnitId));
+            // 4.b.ii / 4.e: both sections saved with no errors left, and the unit not leased. The Summary shows the
+            // same list and the page disables the button, but this is the check that actually matters. We leave any
+            // other open applications for the unit alone.
+            var blockers = CheckSections(application!, await UnitHasActiveLeaseAsync(application!.UnitId)).Blockers;
             if (blockers.Count > 0)
             {
                 return ServiceResult.Error(string.Join(" ", blockers));
@@ -690,6 +702,86 @@ namespace Troy_Web_Property_Manager.Services
                 Status = (ApplicationStatus)a.Status,
                 SubmittedAt = a.Submitted
             }).ToListAsync();
+        }
+
+        // ---------------- Section rules ----------------
+
+        /// <summary>Everything the section rules say about a saved application (see <see cref="CheckSections"/>).</summary>
+        /// <param name="ApplicantInformation">Field errors on section 1, keyed like the page's inputs.</param>
+        /// <param name="Residences">The residences, newest first, each with its own errors.</param>
+        /// <param name="ResidenceHistory">Section-level errors on section 2 (no residences).</param>
+        /// <param name="Blockers">The one list of what's stopping Submit.</param>
+        private sealed record SectionChecks(List<FieldError> ApplicantInformation, List<ResidenceViewModel> Residences,
+            List<FieldError> ResidenceHistory, List<string> Blockers);
+
+        /// <summary>
+        /// Runs each section's rules against what's saved. A section's field errors only count once it's been saved
+        /// (until then its blocker is just "not saved yet"), but residences are saved one by one from the modal, so
+        /// theirs always count. Needs <c>ApplicantInformation</c> and <c>Residences</c> loaded.
+        /// </summary>
+        private static SectionChecks CheckSections(RentalApplication application, bool unitHasActiveLease)
+        {
+            var info = application.ApplicantInformationSaved && application.ApplicantInformation is { } saved
+                ? SectionValidator.Validate(ToViewModel(saved), ApplicantInformationPrefix)
+                : [];
+            var residences = OrderedResidences(application).Select(r => ToViewModel(r, withErrors: true)).ToList();
+            List<FieldError> history = application.ResidenceHistorySaved && residences.Count == 0
+                ? [new FieldError(ResidencesKey, SubmissionRules.NoResidences)]
+                : [];
+            var blockers = SubmissionRules.GetBlockers(
+                application.ApplicantInformationSaved, info.Select(e => e.Message),
+                application.ResidenceHistorySaved, residences.Count,
+                residences.SelectMany(r => r.Errors.Select(e => $"{Describe(r)} - {e.Message}")),
+                unitHasActiveLease);
+            return new SectionChecks(info, residences, history, blockers);
+        }
+
+        /// <summary>How a residence is named in the blocker list.</summary>
+        private static string Describe(ResidenceViewModel residence)
+        {
+            return string.IsNullOrWhiteSpace(residence.Address) ? "Residence with no address" : residence.Address;
+        }
+
+        private static IEnumerable<Residence> OrderedResidences(RentalApplication application)
+        {
+            return application.Residences.OrderByDescending(r => r.MoveInDate).ThenByDescending(r => r.Id);
+        }
+
+        private static ApplicantInformationViewModel ToViewModel(ApplicantInformation info)
+        {
+            return new() { Name = info.Name, Phone = info.Phone, Email = info.Email, CurrentAddress = info.CurrentAddress };
+        }
+
+        private static ResidenceViewModel ToViewModel(Residence residence, bool withErrors = false)
+        {
+            var model = new ResidenceViewModel
+            {
+                ApplicationId = residence.RentalApplicationId,
+                ResidenceId = residence.Id,
+                Address = residence.Address,
+                LandlordName = residence.LandlordName,
+                LandlordPhone = residence.LandlordPhone,
+                MoveInDate = residence.MoveInDate,
+                MoveOutDate = residence.MoveOutDate
+            };
+            if (withErrors) model.Errors = SectionValidator.Validate(model);
+            return model;
+        }
+
+        /// <summary>
+        /// The one rule that does stop a save: text longer than its column can't be stored. Returns those errors
+        /// (and nothing is saved), or null if everything fits.
+        /// </summary>
+        private static ServiceResult? TooLongToSave(object model)
+        {
+            var tooLong = SectionValidator.Validate(model).Where(e => e.PreventsSave).ToList();
+            return tooLong.Count > 0 ? ServiceResult.Invalid(tooLong) : null;
+        }
+
+        /// <summary>Trimmed, with blank stored as "" (the columns are NOT NULL).</summary>
+        private static string Clean(string? value)
+        {
+            return value?.Trim() ?? "";
         }
 
         // ---------------- Helpers ----------------
