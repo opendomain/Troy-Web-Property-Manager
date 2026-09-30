@@ -8,8 +8,13 @@
     - The form tag helper adds the antiforgery token and site.js posts the whole form, token and all.
     - Required/length/phone checks come from DataAnnotations (browser and server). "Move-out on or after move-in" is
       the view model's IValidatableObject rule (server only) and shows under Move-out date.
+    - It saves even with errors (data-save-invalid tells site.js not to stop it in the browser). If errors are left,
+      the controller sends this back on the saved residence with the errors under their fields and the "saved" note,
+      and data-refresh-* tells site.js to redraw the residence list behind the modal.
 *@
-<form asp-controller="Applications" asp-action="Residence" asp-route-id="@Model.ApplicationId" method="post" data-modal-form>
+<form asp-controller="Applications" asp-action="Residence" asp-route-id="@Model.ApplicationId" method="post" data-modal-form data-save-invalid
+      data-refresh-target="@(Model.SavedWithErrors ? "#residence-history" : null)"
+      data-refresh-url="@(Model.SavedWithErrors ? Url.Action("Residences", "Applications", new { id = Model.ApplicationId }) : null)">
     @* Empty when adding. When editing, the service only looks for this id inside this user's own application. *@
     <input type="hidden" asp-for="ResidenceId" />
     <div class="modal-header">
@@ -17,6 +22,10 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
     </div>
     <div class="modal-body">
+        @if (Model.SavedWithErrors)
+        {
+            <div class="alert alert-warning" role="status">Saved, but some fields still need fixing before you can submit.</div>
+        }
         <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
         <div class="mb-3">
             <label asp-for="Address" class="form-label"></label>

@@ -236,8 +236,9 @@ namespace Troy_Web_Property_Manager.Data
             // Section 2 (4.a.ii): any number of prior residences per application. Move-in/out are plain "date" columns (DateOnly).
             modelBuilder.Entity<Residence>(entity =>
             {
-                // Same rule as ResidenceViewModel.Validate, backed up by the database.
-                entity.ToTable("Residence", t => t.HasCheckConstraint("CK_Residence_Dates", "[MoveOutDate] >= [MoveInDate]"));
+                // No date check constraint: a residence can be saved with errors (missing dates, move-out before
+                // move-in) and fixed later. ResidenceViewModel's rules block Submit until it's right.
+                entity.ToTable("Residence");
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.Address).HasMaxLength(50);

@@ -1,4 +1,6 @@
-﻿namespace Troy_Web_Property_Manager.Services
+﻿using Troy_Web_Property_Manager.Rules;
+
+namespace Troy_Web_Property_Manager.Services
 {
     /// <summary>
     /// What came back from a service call: it worked (maybe with a new id), it wasn't found, you're not allowed,
@@ -27,6 +29,12 @@
 
         /// <summary>Field name (or "" for general errors) → message.</summary>
         public Dictionary<string, string> Errors { get; } = [];
+
+        /// <summary>
+        /// It worked, but the saved section still breaks some of its rules. These don't make it a failure - sections
+        /// can be saved with errors - they just block Submit until they're fixed.
+        /// </summary>
+        public IReadOnlyList<FieldError> Unresolved { get; private init; } = [];
         public bool Succeeded
         {
             get { return !NotFound && !Forbidden && Errors.Count == 0; }
@@ -35,6 +43,20 @@
         public static ServiceResult Ok(int id = 0)
         {
             return new() { Id = id };
+        }
+
+        /// <summary>Saved, with whatever rule errors are still left on it (see <see cref="Unresolved"/>).</summary>
+        public static ServiceResult Saved(IReadOnlyList<FieldError> unresolved, int id = 0)
+        {
+            return new() { Id = id, Unresolved = unresolved };
+        }
+
+        /// <summary>Not saved, with an error on each field that stopped it.</summary>
+        public static ServiceResult Invalid(IEnumerable<FieldError> errors)
+        {
+            var result = new ServiceResult();
+            foreach (var error in errors) result.Errors.TryAdd(error.Field, error.Message);
+            return result;
         }
 
         public static ServiceResult Missing()

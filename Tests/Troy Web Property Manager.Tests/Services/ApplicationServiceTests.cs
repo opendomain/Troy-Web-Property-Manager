@@ -291,10 +291,194 @@ namespace Troy_Web_Property_Manager.Tests.Services
         // ---------------- Sections and submit ----------------
 
         [Fact]
-        public async Task SaveResidenceHistory_WithoutResidences_IsRejected()
+        public async Task SaveResidenceHistory_WithoutResidences_SavesWithTheError()
         {
             var id = await StartAsync();
-            AssertError(await Service().SaveResidenceHistoryAsync(id, ApplicantUser), "at least one prior residence");
+
+            var result = await Service().SaveResidenceHistoryAsync(id, ApplicantUser);
+
+            AssertOk(result);
+            var error = Assert.Single(result.Unresolved);
+            Assert.Equal((ApplicationService.ResidencesKey, SubmissionRules.NoResidences), (error.Field, error.Message));
+            Assert.True((await LoadAsync(id)).ResidenceHistorySaved);
+            var editor = await Service().GetEditorAsync(id, ApplicationSection.ResidenceHistory, ApplicantUser);
+            Assert.Equal(SubmissionRules.NoResidences, Assert.Single(editor!.ResidenceHistoryErrors).Message);
+            Assert.True(editor.SectionHasErrors(ApplicationSection.ResidenceHistory));
+        }
+
+        // ---------------- Saving with errors ----------------
+
+        private static ApplicantInformationViewModel BadInfo()
+        {
+            return new() { Name = "  ", Phone = "not a phone", Email = "nope", CurrentAddress = "9 Oak Ave" };
+        }
+
+        [Fact]
+        public async Task SaveApplicantInformation_WithErrors_SavesAndReturnsThemByField()
+        {
+            var id = await StartAsync();
+
+            var result = await Service().SaveApplicantInformationAsync(id, BadInfo(), ApplicantUser);
+
+            AssertOk(result);
+            Assert.Equal(new[] { "Email", "Name", "Phone" }, result.Unresolved.Select(e => e.Field).Order());
+            var application = await LoadAsync(id);
+            Assert.True(application.ApplicantInformationSaved);
+            Assert.Equal("", application.ApplicantInformation!.Name); // blank stored as ""
+            Assert.Equal("not a phone", application.ApplicantInformation.Phone);
+        }
+
+        [Fact]
+        public async Task Editor_PutsSavedErrorsOnTheirFields_AndSummaryListsThem()
+        {
+            var id = await StartAsync();
+            AssertOk(await Service().SaveApplicantInformationAsync(id, BadInfo(), ApplicantUser));
+
+            var editor = await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser);
+
+            Assert.Contains(editor!.ApplicantInformationErrors, e => e.Field == "ApplicantInformation.Phone");
+            Assert.Contains(editor.ApplicantInformationErrors, e => e.Field == "ApplicantInformation.Email");
+            Assert.Contains(editor.ApplicantInformationErrors, e => e.Field == "ApplicantInformation.Name");
+            Assert.True(editor.SectionHasErrors(ApplicationSection.ApplicantInformation));
+            Assert.Contains(editor.SubmitBlockers, b => b.StartsWith("Applicant information:") && b.Contains("Phone"));
+            Assert.Contains(SubmissionRules.ResidenceHistoryNotSaved, editor.SubmitBlockers);
+            Assert.False(editor.CanSubmit);
+        }
+
+        [Fact]
+        public async Task Submit_IsBlockedWhileAnyErrorRemains_ThenWorksOnceFixed()
+        {
+            var id = await CompleteDraftAsync();
+            AssertOk(await Service().SaveApplicantInformationAsync(id, BadInfo(), ApplicantUser));
+
+            var result = await Service().SubmitAsync(id, ApplicantUser);
+            AssertError(result, "Applicant information:");
+            Assert.Equal((long)ApplicationStatus.Draft, (await LoadAsync(id)).Status);
+
+            AssertOk(await Service().SaveApplicantInformationAsync(id, Info(), ApplicantUser));
+            AssertOk(await Service().SubmitAsync(id, ApplicantUser));
+        }
+
+        [Fact]
+        public async Task SaveApplicantInformation_WithErrors_DoesNotOverwriteTheProfileUsedForPrefill()
+        {
+            var first = await StartAsync(unitId: _db.UnitId);
+            AssertOk(await Service().SaveApplicantInformationAsync(first, Info("good@example.com"), ApplicantUser));
+            AssertOk(await Service().SaveApplicantInformationAsync(first, BadInfo(), ApplicantUser));
+
+            var second = await StartAsync(unitId: _db.SecondUnitId);
+            Assert.Equal("good@example.com", (await Service().GetEditorAsync(second, null, ApplicantUser))!.ApplicantInformation.Email);
+        }
+
+        [Fact]
+        public async Task SaveApplicantInformation_TooLongForTheDatabase_IsNotSaved()
+        {
+            var id = await StartAsync();
+            var info = Info();
+            info.Name = new string('x', 51);
+
+            var result = await Service().SaveApplicantInformationAsync(id, info, ApplicantUser);
+
+            Assert.False(result.Succeeded);
+            Assert.True(result.Errors.ContainsKey("Name"));
+            Assert.False((await LoadAsync(id)).ApplicantInformationSaved);
+        }
+
+        [Fact]
+        public async Task SaveResidence_WithErrors_SavesAndReturnsItsIdAndErrors()
+        {
+            var id = await StartAsync();
+            var residence = Residence();
+            residence.LandlordPhone = "";
+            residence.MoveInDate = new DateOnly(2025, 1, 1); // after the move-out date
+            residence.MoveOutDate = new DateOnly(2024, 1, 1);
+
+            var result = await Service().SaveResidenceAsync(id, residence, ApplicantUser);
+
+            AssertOk(result);
+            Assert.NotEqual(0, result.Id);
+            Assert.Equal(new[] { nameof(ResidenceViewModel.LandlordPhone), nameof(ResidenceViewModel.MoveOutDate) },
+                result.Unresolved.Select(e => e.Field).Order());
+            // Saving again with the returned id edits the same residence rather than adding another.
+            residence.ResidenceId = result.Id;
+            residence.LandlordPhone = "518-555-0199";
+            residence.MoveOutDate = new DateOnly(2025, 6, 1);
+            var fixedResult = await Service().SaveResidenceAsync(id, residence, ApplicantUser);
+            AssertOk(fixedResult);
+            Assert.Empty(fixedResult.Unresolved);
+            Assert.Single(_db.CreateContext().Residences.Where(r => r.RentalApplicationId == id));
+        }
+
+        [Fact]
+        public async Task SaveResidence_WithNoDates_IsSavedAndReportsBoth()
+        {
+            var id = await StartAsync();
+
+            var result = await Service().SaveResidenceAsync(id, new ResidenceViewModel { Address = "5 Elm St" }, ApplicantUser);
+
+            AssertOk(result);
+            Assert.Contains(result.Unresolved, e => e.Field == nameof(ResidenceViewModel.MoveInDate));
+            Assert.Contains(result.Unresolved, e => e.Field == nameof(ResidenceViewModel.MoveOutDate));
+            var saved = await _db.CreateContext().Residences.SingleAsync(r => r.RentalApplicationId == id);
+            Assert.Null(saved.MoveInDate);
+            Assert.Equal("", saved.LandlordName);
+        }
+
+        [Fact]
+        public async Task ResidenceErrors_ShowOnTheRowAndInTheModal_AndBlockSubmit()
+        {
+            var id = await CompleteDraftAsync();
+            var residence = Residence();
+            residence.LandlordName = null;
+            var residenceId = (await Service().SaveResidenceAsync(id, residence, ApplicantUser)).Id;
+
+            var editor = await Service().GetEditorAsync(id, ApplicationSection.ResidenceHistory, ApplicantUser);
+            var row = editor!.Residences.Single(r => r.ResidenceId == residenceId);
+            Assert.Equal(nameof(ResidenceViewModel.LandlordName), Assert.Single(row.Errors).Field);
+            Assert.Contains(editor.SubmitBlockers, b => b.StartsWith("Residence history: 5 Elm St - ") && b.Contains("Landlord name"));
+            Assert.Equal(nameof(ResidenceViewModel.LandlordName),
+                Assert.Single((await Service().GetResidenceAsync(id, residenceId, ApplicantUser))!.Errors).Field);
+            AssertError(await Service().SubmitAsync(id, ApplicantUser), "Landlord name");
+        }
+
+        [Fact]
+        public async Task SaveResidenceHistory_ReturnsTheResidencesErrors()
+        {
+            var id = await StartAsync();
+            var residence = Residence();
+            residence.LandlordPhone = null;
+            AssertOk(await Service().SaveResidenceAsync(id, residence, ApplicantUser));
+
+            var result = await Service().SaveResidenceHistoryAsync(id, ApplicantUser);
+
+            AssertOk(result);
+            Assert.Equal(nameof(ResidenceViewModel.LandlordPhone), Assert.Single(result.Unresolved).Field);
+        }
+
+        [Fact]
+        public async Task CleanSections_HaveNoErrors()
+        {
+            var id = await CompleteDraftAsync();
+
+            var editor = await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser);
+
+            Assert.Empty(editor!.ApplicantInformationErrors);
+            Assert.Empty(editor.ResidenceHistoryErrors);
+            Assert.All(editor.Residences, r => Assert.Empty(r.Errors));
+            Assert.Empty(editor.SubmitBlockers);
+            Assert.True(editor.CanSubmit);
+        }
+
+        [Fact]
+        public async Task Managers_NeverGetFieldErrors()
+        {
+            var id = await SubmittedAsync();
+
+            var editor = await Service().GetEditorAsync(id, null, ManagerUser);
+
+            Assert.Empty(editor!.ApplicantInformationErrors);
+            Assert.Empty(editor.ResidenceHistoryErrors);
+            Assert.Empty(editor.SubmitBlockers);
         }
 
         [Fact]
@@ -305,15 +489,15 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
-        public async Task DeleteLastResidence_MarksSectionUnsaved()
+        public async Task DeleteLastResidence_LeavesTheSectionSavedWithTheNoResidencesError()
         {
             var id = await CompleteDraftAsync();
             var residenceId = (await Service().GetEditorAsync(id, null, ApplicantUser))!.Residences.Single().ResidenceId!.Value;
 
             AssertOk(await Service().DeleteResidenceAsync(id, residenceId, ApplicantUser));
 
-            Assert.False((await LoadAsync(id)).ResidenceHistorySaved);
-            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.ResidenceHistoryNotSaved);
+            Assert.True((await LoadAsync(id)).ResidenceHistorySaved);
+            AssertError(await Service().SubmitAsync(id, ApplicantUser), SubmissionRules.NoResidences);
         }
 
         [Fact]
