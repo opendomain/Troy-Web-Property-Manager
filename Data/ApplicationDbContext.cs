@@ -123,7 +123,8 @@ namespace Troy_Web_Property_Manager.Data
             // "Available" is worked out from these dates when we query - we never store it.
             modelBuilder.Entity<Lease>(entity =>
             {
-                entity.ToTable("Lease");
+                // EndDate is exclusive, so a lease has to end after it starts, not on the same day.
+                entity.ToTable("Lease", t => t.HasCheckConstraint("CK_Lease_Term", "[EndDate] > [StartDate]"));
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.EndDate).HasColumnType("datetime");
@@ -197,7 +198,8 @@ namespace Troy_Web_Property_Manager.Data
             // Section 2 (4.a.ii): any number of prior residences per application. Move-in/out are plain "date" columns (DateOnly).
             modelBuilder.Entity<Residence>(entity =>
             {
-                entity.ToTable("Residence");
+                // Same rule as ResidenceViewModel.Validate, backed up by the database.
+                entity.ToTable("Residence", t => t.HasCheckConstraint("CK_Residence_Dates", "[MoveOutDate] >= [MoveInDate]"));
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.Address).HasMaxLength(50);
@@ -225,7 +227,8 @@ namespace Troy_Web_Property_Manager.Data
             // A unit of a property (2.b): unit number, bedrooms, monthly rent and unit type.
             modelBuilder.Entity<Unit>(entity =>
             {
-                entity.ToTable("Unit");
+                // Matches the Range(0, 10) on UnitFormViewModel.Bedrooms.
+                entity.ToTable("Unit", t => t.HasCheckConstraint("CK_Unit_Bedrooms", "[Bedrooms] >= 0 AND [Bedrooms] <= 10"));
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 // The DB default is only there for raw SQL inserts. EF always sends a value, so 0 bedrooms stays 0
