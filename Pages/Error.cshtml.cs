@@ -10,7 +10,10 @@ namespace Troy_Web_Property_Manager.Pages
     {
         public string? RequestId { get; set; }
 
-        public bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+        public bool ShowRequestId
+        {
+            get { return !string.IsNullOrEmpty(RequestId); }
+        }
 
         public void OnGet()
         {

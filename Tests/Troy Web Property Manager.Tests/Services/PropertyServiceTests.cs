@@ -10,25 +10,38 @@ namespace Troy_Web_Property_Manager.Tests.Services
     {
         private readonly TestDatabase _db = new();
 
-        public void Dispose() => _db.Dispose();
-
-        private PropertyService Service() => new(_db.CreateContext());
-
-        private static void AssertOk(ServiceResult result) =>
-            Assert.True(result.Succeeded, $"NotFound={result.NotFound}; {string.Join("; ", result.Errors.Values)}");
-
-        private UnitFormViewModel NewUnit(string number = "201", int? unitTypeId = null) => new()
+        public void Dispose()
         {
-            PropertyId = _db.PropertyId,
-            UnitNumber = number,
-            Bedrooms = 0,
-            MonthlyRent = 950m,
-            UnitTypeId = unitTypeId ?? _db.ActiveUnitTypeId
-        };
+            _db.Dispose();
+        }
+
+        private PropertyService Service()
+        {
+            return new(_db.CreateContext());
+        }
+
+        private static void AssertOk(ServiceResult result)
+        {
+            Assert.True(result.Succeeded, $"NotFound={result.NotFound}; {string.Join("; ", result.Errors.Values)}");
+        }
+
+        private UnitFormViewModel NewUnit(string number = "201", int? unitTypeId = null)
+        {
+            return new()
+            {
+                PropertyId = _db.PropertyId,
+                UnitNumber = number,
+                Bedrooms = 0,
+                MonthlyRent = 950m,
+                UnitTypeId = unitTypeId ?? _db.ActiveUnitTypeId
+            };
+        }
 
         /// <summary>Gives the unit an application, which blocks removing it or its property.</summary>
-        private Task StartApplicationAsync(int unitId) =>
-            new ApplicationService(_db.CreateContext()).StartAsync(unitId, ApplicantUser);
+        private Task StartApplicationAsync(int unitId)
+        {
+            return new ApplicationService(_db.CreateContext()).StartAsync(unitId, ApplicantUser);
+        }
 
         // ---------------- Properties ----------------
 
@@ -45,8 +58,10 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
-        public async Task SaveProperty_UnknownId_IsNotFound() =>
+        public async Task SaveProperty_UnknownId_IsNotFound()
+        {
             Assert.True((await Service().SavePropertyAsync(new PropertyFormViewModel { Id = 9999, Name = "X", Address = "Y" })).NotFound);
+        }
 
         [Fact]
         public async Task DeleteProperty_WithoutApplications_RemovesItAndItsUnits()

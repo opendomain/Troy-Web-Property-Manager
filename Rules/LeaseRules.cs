@@ -8,7 +8,10 @@ namespace Troy_Web_Property_Manager.Rules
         public const int TermMonths = 12;
 
         /// <summary>End date for a lease starting on <paramref name="startDate"/>. The end date is exclusive.</summary>
-        public static DateTime EndDateFor(DateTime startDate) => startDate.Date.AddMonths(TermMonths);
+        public static DateTime EndDateFor(DateTime startDate)
+        {
+            return startDate.Date.AddMonths(TermMonths);
+        }
 
         /// <summary>
         /// A lease is active on a day when its term covers that day: StartDate is inclusive, EndDate is exclusive,
@@ -21,6 +24,9 @@ namespace Troy_Web_Property_Manager.Rules
         }
 
         /// <summary>In-memory form of <see cref="ActiveOn"/>, for code and tests that already have a lease.</summary>
-        public static bool IsActiveOn(Lease lease, DateTime day) => ActiveOn(day).Compile()(lease);
+        public static bool IsActiveOn(Lease lease, DateTime day)
+        {
+            return ActiveOn(day).Compile()(lease);
+        }
     }
 }

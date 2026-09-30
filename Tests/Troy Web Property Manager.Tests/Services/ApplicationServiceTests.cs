@@ -12,15 +12,23 @@ namespace Troy_Web_Property_Manager.Tests.Services
     {
         private readonly TestDatabase _db = new();
 
-        public void Dispose() => _db.Dispose();
+        public void Dispose()
+        {
+            _db.Dispose();
+        }
 
         // ---------------- Helpers ----------------
 
         /// <summary>A service on a fresh context, as each web request would get.</summary>
-        private ApplicationService Service(params IInterceptor[] interceptors) => new(_db.CreateContext(interceptors));
+        private ApplicationService Service(params IInterceptor[] interceptors)
+        {
+            return new(_db.CreateContext(interceptors));
+        }
 
-        private static void AssertOk(ServiceResult result) =>
+        private static void AssertOk(ServiceResult result)
+        {
             Assert.True(result.Succeeded, $"NotFound={result.NotFound}; {string.Join("; ", result.Errors.Values)}");
+        }
 
         private static void AssertError(ServiceResult result, string expectedMessagePart)
         {
@@ -29,24 +37,33 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Contains(result.Errors.Values, m => m.Contains(expectedMessagePart));
         }
 
-        private static ApplicantInformationViewModel Info(string email = "alex@example.com") => new()
+        private static ApplicantInformationViewModel Info(string email = "alex@example.com")
         {
-            Name = " Alex ApplicantUser ",
-            Phone = "518-555-0100",
-            Email = email,
-            CurrentAddress = "9 Oak Ave"
-        };
+            return new()
+            {
+                Name = " Alex ApplicantUser ",
+                Phone = "518-555-0100",
+                Email = email,
+                CurrentAddress = "9 Oak Ave"
+            };
+        }
 
-        private static ResidenceViewModel Residence() => new()
+        private static ResidenceViewModel Residence()
         {
-            Address = "5 Elm St",
-            LandlordName = "Pat Landlord",
-            LandlordPhone = "518-555-0199",
-            MoveInDate = new DateOnly(2020, 1, 1),
-            MoveOutDate = new DateOnly(2024, 12, 31)
-        };
+            return new()
+            {
+                Address = "5 Elm St",
+                LandlordName = "Pat Landlord",
+                LandlordPhone = "518-555-0199",
+                MoveInDate = new DateOnly(2020, 1, 1),
+                MoveOutDate = new DateOnly(2024, 12, 31)
+            };
+        }
 
-        private static ReviewViewModel Review(ReviewOutcome outcome, string? comment = null) => new() { Outcome = outcome, Comment = comment };
+        private static ReviewViewModel Review(ReviewOutcome outcome, string? comment = null)
+        {
+            return new() { Outcome = outcome, Comment = comment };
+        }
 
         private async Task<int> StartAsync(CurrentUser? user = null, int? unitId = null)
         {
@@ -81,12 +98,14 @@ namespace Troy_Web_Property_Manager.Tests.Services
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
         }
 
-        private Task<RentalApplication> LoadAsync(int id) =>
-            _db.CreateContext().RentalApplications
+        private Task<RentalApplication> LoadAsync(int id)
+        {
+            return _db.CreateContext().RentalApplications
                 .Include(a => a.ApplicationStatusHistories)
                 .Include(a => a.ApplicantInformation)
                 .Include(a => a.Leases)
                 .SingleAsync(a => a.Id == id);
+        }
 
         /// <summary>Simulates another request changing the status after the service loaded the application, just before it saves.</summary>
         private sealed class ChangeStatusBeforeSave(int applicationId, ApplicationStatus status) : SaveChangesInterceptor
@@ -153,12 +172,16 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
-        public async Task Start_ByManager_IsRejected() =>
+        public async Task Start_ByManager_IsRejected()
+        {
             AssertError(await Service().StartAsync(_db.UnitId, ManagerUser), "Only applicants");
+        }
 
         [Fact]
-        public async Task Start_UnknownUnit_IsNotFound() =>
+        public async Task Start_UnknownUnit_IsNotFound()
+        {
             Assert.True((await Service().StartAsync(9999, ApplicantUser)).NotFound);
+        }
 
         [Fact]
         public async Task Start_LeasedUnit_IsRejected()

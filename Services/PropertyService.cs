@@ -49,10 +49,12 @@ namespace Troy_Web_Property_Manager.Services
             }).ToListAsync();
         }
 
-        public Task<PropertyFormViewModel?> GetPropertyFormAsync(int id) =>
-        db.Properties.Where(p => p.Id == id)
-        .Select(p => new PropertyFormViewModel { Id = p.Id, Name = p.Name, Address = p.Address })
-        .FirstOrDefaultAsync();
+        public Task<PropertyFormViewModel?> GetPropertyFormAsync(int id)
+        {
+            return db.Properties.Where(p => p.Id == id)
+            .Select(p => new PropertyFormViewModel { Id = p.Id, Name = p.Name, Address = p.Address })
+            .FirstOrDefaultAsync();
+        }
         public async Task<ServiceResult> SavePropertyAsync(PropertyFormViewModel model)
         {
             var property = model.Id is null ? new Property() : await db.Properties.FindAsync(model.Id);
@@ -80,23 +82,30 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>Property dropdown options, with <paramref name="selectedId"/> preselected.</summary>
-        public Task<List<SelectListItem>> GetPropertyOptionsAsync(int? selectedId = null) =>
-            db.Properties.AsNoTracking().OrderBy(p => p.Name)
+        public Task<List<SelectListItem>> GetPropertyOptionsAsync(int? selectedId = null)
+        {
+            return db.Properties.AsNoTracking().OrderBy(p => p.Name)
             .Select(p => new SelectListItem(p.Name, p.Id.ToString(), p.Id == selectedId))
             .ToListAsync();
+        }
 
-        public Task<bool> PropertyExistsAsync(int id) => db.Properties.AnyAsync(p => p.Id == id);
-
-        public Task<UnitFormViewModel?> GetUnitFormAsync(int id) =>
-        db.Units.Where(u => u.Id == id).Select(u => new UnitFormViewModel
+        public Task<bool> PropertyExistsAsync(int id)
         {
-            Id = u.Id,
-            PropertyId = u.PropertyId,
-            UnitNumber = u.UnitNumber,
-            Bedrooms = u.Bedrooms,
-            MonthlyRent = u.MonthlyRent,
-            UnitTypeId = u.UnitTypeId
-        }).FirstOrDefaultAsync();
+            return db.Properties.AnyAsync(p => p.Id == id);
+        }
+
+        public Task<UnitFormViewModel?> GetUnitFormAsync(int id)
+        {
+            return db.Units.Where(u => u.Id == id).Select(u => new UnitFormViewModel
+            {
+                Id = u.Id,
+                PropertyId = u.PropertyId,
+                UnitNumber = u.UnitNumber,
+                Bedrooms = u.Bedrooms,
+                MonthlyRent = u.MonthlyRent,
+                UnitTypeId = u.UnitTypeId
+            }).FirstOrDefaultAsync();
+        }
         public async Task<ServiceResult> SaveUnitAsync(UnitFormViewModel model)
         {
             var unit = model.Id is null ? new Unit { PropertyId = model.PropertyId } : await
@@ -145,9 +154,11 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>Dropdown options: active types, plus the unit's current type when editing even if it is inactive.</summary>
-        public Task<List<SelectListItem>> GetUnitTypeOptionsAsync(int? currentUnitTypeId) =>
-            db.UnitTypes.Where(t => t.IsActive || t.Id == currentUnitTypeId).OrderBy(t => t.Name)
+        public Task<List<SelectListItem>> GetUnitTypeOptionsAsync(int? currentUnitTypeId)
+        {
+            return db.UnitTypes.Where(t => t.IsActive || t.Id == currentUnitTypeId).OrderBy(t => t.Name)
             .Select(t => new SelectListItem(t.IsActive ? t.Name : t.Name + " (inactive)", t.Id.ToString()))
             .ToListAsync();
+        }
     }
 }

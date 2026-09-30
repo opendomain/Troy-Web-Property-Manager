@@ -112,17 +112,23 @@ namespace Troy_Web_Property_Manager.Data
             }).ToList();
         }
 
-        private static Applicant CreateApplicant(Faker f, IdentityUser user) => new()
+        private static Applicant CreateApplicant(Faker f, IdentityUser user)
         {
-            UserId = user.Id,
-            Name = Fit(f.Name.FullName()),
-            Phone = f.Phone.PhoneNumber("(###) ###-####"),
-            Email = user.Email!,
-            CurrentAddress = Fit($"{f.Address.StreetAddress()}, {f.Address.City()}")
-        };
+            return new()
+            {
+                UserId = user.Id,
+                Name = Fit(f.Name.FullName()),
+                Phone = f.Phone.PhoneNumber("(###) ###-####"),
+                Email = user.Email!,
+                CurrentAddress = Fit($"{f.Address.StreetAddress()}, {f.Address.City()}")
+            };
+        }
 
         /// <summary>Keeps generated text within the 50-character columns.</summary>
-        private static string Fit(string value) => value.Length <= 50 ? value : value[..50].TrimEnd();
+        private static string Fit(string value)
+        {
+            return value.Length <= 50 ? value : value[..50].TrimEnd();
+        }
 
         /// <summary>Builds applications with consistent history, sections and leases.</summary>
         private sealed class ApplicationGenerator(Faker f, List<IdentityUser> managers, DateTime now)
@@ -222,8 +228,10 @@ namespace Troy_Web_Property_Manager.Data
                 return true;
             }
 
-            private static bool LeasedOn((DateTime Start, DateTime End) lease, DateTime time) =>
-                lease.Start <= time.Date && time.Date < lease.End;
+            private static bool LeasedOn((DateTime Start, DateTime End) lease, DateTime time)
+            {
+                return lease.Start <= time.Date && time.Date < lease.End;
+            }
 
             private static void Remember<T>(Dictionary<Unit, List<T>> byUnit, Unit unit, T value)
             {

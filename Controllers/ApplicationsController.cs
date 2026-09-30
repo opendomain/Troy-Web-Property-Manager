@@ -18,13 +18,16 @@ namespace Troy_Web_Property_Manager.Controllers
         // ---------------- List ----------------
 
         /// <summary>Applicants see their own applications, managers all of them; the filters run in SQL.</summary>
-        public async Task<IActionResult> Index(ApplicationStatus? status, int? propertyId) => View(new ApplicationListViewModel
+        public async Task<IActionResult> Index(ApplicationStatus? status, int? propertyId)
         {
-            Status = status,
-            PropertyId = propertyId,
-            Items = await applications.ListAsync(status, propertyId, CurrentUser),
-            Properties = await properties.GetPropertyOptionsAsync(propertyId)
-        });
+            return View(new ApplicationListViewModel
+            {
+                Status = status,
+                PropertyId = propertyId,
+                Items = await applications.ListAsync(status, propertyId, CurrentUser),
+                Properties = await properties.GetPropertyOptionsAsync(propertyId)
+            });
+        }
 
         // ---------------- Start ----------------
 
@@ -95,8 +98,10 @@ namespace Troy_Web_Property_Manager.Controllers
             }
         }
 
-        private bool SectionIsValid(string prefix) =>
-            ModelState.Where(e => e.Key.StartsWith(prefix)).All(e => e.Value!.ValidationState != ModelValidationState.Invalid);
+        private bool SectionIsValid(string prefix)
+        {
+            return ModelState.Where(e => e.Key.StartsWith(prefix)).All(e => e.Value!.ValidationState != ModelValidationState.Invalid);
+        }
 
         /// <summary>Shows the same section again with its errors, keeping what the user typed.</summary>
         private async Task<IActionResult> RedisplayAsync(int id, ApplicationEditorViewModel posted)
@@ -130,8 +135,10 @@ namespace Troy_Web_Property_Manager.Controllers
         }
 
         /// <summary>True when the current user may edit this application's residences (theirs, Draft or Returned).</summary>
-        private async Task<bool> CanEditAsync(int id) =>
-            (await applications.GetEditorAsync(id, ApplicationSection.ResidenceHistory, CurrentUser))?.CanEdit == true;
+        private async Task<bool> CanEditAsync(int id)
+        {
+            return (await applications.GetEditorAsync(id, ApplicationSection.ResidenceHistory, CurrentUser))?.CanEdit == true;
+        }
 
         [Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> Residence(int id, int? residenceId)
@@ -173,8 +180,10 @@ namespace Troy_Web_Property_Manager.Controllers
             return ModalInvalid("_Confirm", ConfirmDeleteResidence(id, residenceId));
         }
 
-        private ConfirmViewModel ConfirmDeleteResidence(int id, int residenceId) =>
-            new("Remove residence", "Remove this residence?", Url.Action(nameof(DeleteResidence), new { id, residenceId })!, "Remove");
+        private ConfirmViewModel ConfirmDeleteResidence(int id, int residenceId)
+        {
+            return new("Remove residence", "Remove this residence?", Url.Action(nameof(DeleteResidence), new { id, residenceId })!, "Remove");
+        }
 
         // ---------------- Withdraw (modal) ----------------
 
@@ -230,7 +239,9 @@ namespace Troy_Web_Property_Manager.Controllers
             return ModalInvalid("_ReviewForm", model);
         }
 
-        private ConfirmViewModel ConfirmWithdraw(int id) =>
-            new("Withdraw application", "Withdraw this application? This can't be undone.", Url.Action(nameof(Withdraw), new { id })!, "Withdraw");
+        private ConfirmViewModel ConfirmWithdraw(int id)
+        {
+            return new("Withdraw application", "Withdraw this application? This can't be undone.", Url.Action(nameof(Withdraw), new { id })!, "Withdraw");
+        }
     }
 }

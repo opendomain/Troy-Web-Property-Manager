@@ -6,10 +6,16 @@ namespace Troy_Web_Property_Manager.Services
     internal static class SqlErrors
     {
         /// <summary>Error 1205: chosen as the deadlock victim.</summary>
-        public static bool IsDeadlock(Exception ex) => HasNumber(ex, 1205);
+        public static bool IsDeadlock(Exception ex)
+        {
+            return HasNumber(ex, 1205);
+        }
 
         /// <summary>Errors 2601/2627: a unique index or unique constraint was violated.</summary>
-        public static bool IsUniqueViolation(Exception ex) => HasNumber(ex, 2601, 2627);
+        public static bool IsUniqueViolation(Exception ex)
+        {
+            return HasNumber(ex, 2601, 2627);
+        }
 
         private static bool HasNumber(Exception ex, params int[] numbers)
         {

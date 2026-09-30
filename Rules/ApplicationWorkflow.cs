@@ -14,30 +14,51 @@ namespace Troy_Web_Property_Manager.Rules
             [ApplicationStatus.Withdrawn] = []
         };
 
-        public static bool CanTransition(ApplicationStatus from, ApplicationStatus to) =>
-            Allowed.TryGetValue(from, out var next) && next.Contains(to);
+        public static bool CanTransition(ApplicationStatus from, ApplicationStatus to)
+        {
+            return Allowed.TryGetValue(from, out var next) && next.Contains(to);
+        }
 
-        public static bool IsTerminal(ApplicationStatus status) => status is ApplicationStatus.Approved or ApplicationStatus.Denied or ApplicationStatus.Withdrawn;
+        public static bool IsTerminal(ApplicationStatus status)
+        {
+            return status is ApplicationStatus.Approved or ApplicationStatus.Denied or ApplicationStatus.Withdrawn;
+        }
 
         /// <summary>The applicant may edit only while Draft or Returned; otherwise every section is read-only.</summary>
-        public static bool IsEditable(ApplicationStatus status) => status is ApplicationStatus.Draft or ApplicationStatus.Returned;
-        
-        public static bool CanReview(ApplicationStatus status) => status == ApplicationStatus.Submitted;
-        
-        public static ApplicationStatus StatusFor(ReviewOutcome outcome) => outcome switch
+        public static bool IsEditable(ApplicationStatus status)
         {
-            ReviewOutcome.Approve => ApplicationStatus.Approved,
-            ReviewOutcome.Return => ApplicationStatus.Returned,
-            ReviewOutcome.Deny => ApplicationStatus.Denied,
-            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown review outcome.")
-        };
-
-        public static bool RequiresComment(ReviewOutcome outcome) => outcome is ReviewOutcome.Return or ReviewOutcome.Deny;
-
-        public static ApplicationSection Next(ApplicationSection section) =>
-            section == ApplicationSection.ApplicantInformation ? ApplicationSection.ResidenceHistory : ApplicationSection.Summary;
+            return status is ApplicationStatus.Draft or ApplicationStatus.Returned;
+        }
         
-        public static ApplicationSection Previous(ApplicationSection section) =>
-            section == ApplicationSection.Summary ? ApplicationSection.ResidenceHistory : ApplicationSection.ApplicantInformation;
+        public static bool CanReview(ApplicationStatus status)
+        {
+            return status == ApplicationStatus.Submitted;
+        }
+        
+        public static ApplicationStatus StatusFor(ReviewOutcome outcome)
+        {
+            return outcome switch
+            {
+                ReviewOutcome.Approve => ApplicationStatus.Approved,
+                ReviewOutcome.Return => ApplicationStatus.Returned,
+                ReviewOutcome.Deny => ApplicationStatus.Denied,
+                _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown review outcome.")
+            };
+        }
+
+        public static bool RequiresComment(ReviewOutcome outcome)
+        {
+            return outcome is ReviewOutcome.Return or ReviewOutcome.Deny;
+        }
+
+        public static ApplicationSection Next(ApplicationSection section)
+        {
+            return section == ApplicationSection.ApplicantInformation ? ApplicationSection.ResidenceHistory : ApplicationSection.Summary;
+        }
+        
+        public static ApplicationSection Previous(ApplicationSection section)
+        {
+            return section == ApplicationSection.Summary ? ApplicationSection.ResidenceHistory : ApplicationSection.ApplicantInformation;
+        }
     }
 }

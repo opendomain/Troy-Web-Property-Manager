@@ -15,57 +15,79 @@ namespace Troy_Web_Property_Manager.Tests.ViewModels
             return results;
         }
 
-        private static IEnumerable<string> ErrorFields(object model) => Validate(model).SelectMany(r => r.MemberNames);
+        private static IEnumerable<string> ErrorFields(object model)
+        {
+            return Validate(model).SelectMany(r => r.MemberNames);
+        }
 
         // ---------------- Review ----------------
 
         [Fact]
-        public void Review_ApproveWithoutComment_IsValid() =>
+        public void Review_ApproveWithoutComment_IsValid()
+        {
             Assert.Empty(Validate(new ReviewViewModel { Outcome = ReviewOutcome.Approve }));
+        }
 
         [Theory]
         [InlineData(ReviewOutcome.Return, null)]
         [InlineData(ReviewOutcome.Deny, "")]
         [InlineData(ReviewOutcome.Deny, "   ")]
-        public void Review_ReturnOrDenyWithoutComment_RequiresComment(ReviewOutcome outcome, string? comment) =>
+        public void Review_ReturnOrDenyWithoutComment_RequiresComment(ReviewOutcome outcome, string? comment)
+        {
             Assert.Equal(new[] { nameof(ReviewViewModel.Comment) }, ErrorFields(new ReviewViewModel { Outcome = outcome, Comment = comment }));
+        }
 
         [Fact]
-        public void Review_DenyWithComment_IsValid() =>
+        public void Review_DenyWithComment_IsValid()
+        {
             Assert.Empty(Validate(new ReviewViewModel { Outcome = ReviewOutcome.Deny, Comment = "Income too low." }));
+        }
 
         [Fact]
-        public void Review_WithoutOutcome_IsInvalid() =>
+        public void Review_WithoutOutcome_IsInvalid()
+        {
             Assert.Contains(nameof(ReviewViewModel.Outcome), ErrorFields(new ReviewViewModel()));
+        }
 
         [Fact]
-        public void Review_CommentOver500Characters_IsInvalid() =>
+        public void Review_CommentOver500Characters_IsInvalid()
+        {
             Assert.Contains(nameof(ReviewViewModel.Comment),
                 ErrorFields(new ReviewViewModel { Outcome = ReviewOutcome.Approve, Comment = new string('x', 501) }));
+        }
 
         // ---------------- Residence ----------------
 
-        private static ResidenceViewModel Residence(DateOnly moveIn, DateOnly moveOut) => new()
+        private static ResidenceViewModel Residence(DateOnly moveIn, DateOnly moveOut)
         {
-            Address = "5 Elm St",
-            LandlordName = "Pat Landlord",
-            LandlordPhone = "518-555-0100",
-            MoveInDate = moveIn,
-            MoveOutDate = moveOut
-        };
+            return new()
+            {
+                Address = "5 Elm St",
+                LandlordName = "Pat Landlord",
+                LandlordPhone = "518-555-0100",
+                MoveInDate = moveIn,
+                MoveOutDate = moveOut
+            };
+        }
 
         [Fact]
-        public void Residence_MoveOutAfterMoveIn_IsValid() =>
+        public void Residence_MoveOutAfterMoveIn_IsValid()
+        {
             Assert.Empty(Validate(Residence(new DateOnly(2020, 1, 1), new DateOnly(2023, 6, 30))));
+        }
 
         [Fact]
-        public void Residence_MoveOutSameDayAsMoveIn_IsValid() =>
+        public void Residence_MoveOutSameDayAsMoveIn_IsValid()
+        {
             Assert.Empty(Validate(Residence(new DateOnly(2020, 1, 1), new DateOnly(2020, 1, 1))));
+        }
 
         [Fact]
-        public void Residence_MoveOutBeforeMoveIn_IsInvalid() =>
+        public void Residence_MoveOutBeforeMoveIn_IsInvalid()
+        {
             Assert.Equal(new[] { nameof(ResidenceViewModel.MoveOutDate) },
                 ErrorFields(Residence(new DateOnly(2023, 6, 30), new DateOnly(2020, 1, 1))));
+        }
 
         [Fact]
         public void Residence_MissingFields_AreRequired()
@@ -81,7 +103,8 @@ namespace Troy_Web_Property_Manager.Tests.ViewModels
         // ---------------- Applicant information ----------------
 
         [Fact]
-        public void ApplicantInformation_Complete_IsValid() =>
+        public void ApplicantInformation_Complete_IsValid()
+        {
             Assert.Empty(Validate(new ApplicantInformationViewModel
             {
                 Name = "Alex Applicant",
@@ -89,6 +112,7 @@ namespace Troy_Web_Property_Manager.Tests.ViewModels
                 Email = "alex@example.com",
                 CurrentAddress = "9 Oak Ave"
             }));
+        }
 
         [Fact]
         public void ApplicantInformation_BadEmailAndTooLongName_AreInvalid()
