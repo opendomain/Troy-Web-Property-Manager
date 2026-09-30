@@ -41,6 +41,14 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public List<SelectListItem> UnitTypes { get; set; } = [];
     }
 
+    /// <summary>The applicant's Available units page: the property filter and the matching units.</summary>
+    public class AvailableUnitsPageViewModel
+    {
+        public int? PropertyId { get; set; }
+        public List<SelectListItem> Properties { get; set; } = [];
+        public List<AvailableUnitViewModel> Units { get; set; } = [];
+    }
+
     public class AvailableUnitViewModel
     {
         public int Id { get; set; }

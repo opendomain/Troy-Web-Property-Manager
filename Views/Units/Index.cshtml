@@ -1,7 +1,57 @@
+@model AvailableUnitsPageViewModel
 @{
     ViewData["Title"] = "Available units";
 }
-
 <h1>@ViewData["Title"]</h1>
 
-<p class="text-muted">Available units will be listed here.</p>
+<form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-sm-6 col-md-4">
+        <label for="propertyId" class="form-label">Property</label>
+        <select id="propertyId" name="propertyId" asp-items="Model.Properties" class="form-select">
+            <option value="">All properties</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-primary">Filter</button>
+    </div>
+</form>
+
+@if (Model.Units.Count == 0)
+{
+    <p class="text-muted">No units are available right now.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Property</th>
+                    <th scope="col">Unit</th>
+                    <th scope="col">Bedrooms</th>
+                    <th scope="col">Rent</th>
+                    <th scope="col">Type</th>
+                    <th scope="col"><span class="visually-hidden">Apply</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var unit in Model.Units)
+                {
+                    <tr>
+                        <td>@unit.PropertyName</td>
+                        <td>@unit.UnitNumber</td>
+                        <td>@unit.Bedrooms</td>
+                        <td>@unit.MonthlyRent.ToString("C0")</td>
+                        <td>@unit.UnitTypeName</td>
+                        <td>
+                            <form asp-controller="Applications" asp-action="Start" method="post">
+                                <input type="hidden" name="unitId" value="@unit.Id" />
+                                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
