@@ -23,10 +23,22 @@ namespace Troy_Web_Property_Manager.Services
         /// <summary>Data for the Properties page: every property, its units, and whether each one is leased today.</summary>
         public Task<List<PropertyViewModel>> GetPropertiesAsync()
         {
+            return ProjectProperties(db.Properties).ToListAsync();
+        }
+
+        /// <summary>One property card's worth of data, so a modal save can redraw just that card. Null if it's gone.</summary>
+        public Task<PropertyViewModel?> GetPropertyAsync(int id)
+        {
+            // Filter before projecting so the WHERE runs in SQL.
+            return ProjectProperties(db.Properties.Where(p => p.Id == id)).FirstOrDefaultAsync();
+        }
+
+        private static IQueryable<PropertyViewModel> ProjectProperties(IQueryable<Property> properties)
+        {
             // This is an Expression<Func<Lease, bool>> so EF can turn it into SQL. The AsQueryable() below is a trick
             // that lets u.Leases take an expression instead of a compiled delegate.
             var leasedToday = LeaseRules.ActiveOn(DateTime.Today);
-            return db.Properties.AsNoTracking().OrderBy(p => p.Name).Select(p => new PropertyViewModel
+            return properties.AsNoTracking().OrderBy(p => p.Name).Select(p => new PropertyViewModel
             {
                 Id = p.Id,
                 Name = p.Name,
@@ -41,7 +53,7 @@ namespace Troy_Web_Property_Manager.Services
                     UnitTypeIsActive = u.UnitType.IsActive,
                     IsLeased = u.Leases.AsQueryable().Any(leasedToday)
                 }).ToList()
-            }).ToListAsync();
+            });
         }
 
         /// <summary>
