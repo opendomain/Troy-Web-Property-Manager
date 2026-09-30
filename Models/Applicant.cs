@@ -15,5 +15,8 @@ public partial class Applicant
 
     public string CurrentAddress { get; set; } = null!;
 
+    /// <summary>The Identity user this applicant profile belongs to.</summary>
+    public string? UserId { get; set; }
+
     public virtual ICollection<RentApplication> RentApplications { get; set; } = new List<RentApplication>();
 }

@@ -15,7 +15,8 @@ public partial class ApplicationStatusHistory
 
     public DateTime ChangedDate { get; set; }
 
-    public int ChangedByUser { get; set; }
+    /// <summary>Identity user id of whoever made the change.</summary>
+    public string ChangedByUser { get; set; } = null!;
 
     public int RentalApplicationId { get; set; }
 

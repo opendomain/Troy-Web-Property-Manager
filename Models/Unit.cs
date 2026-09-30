@@ -11,7 +11,7 @@ public partial class Unit
 
     public int Bedrooms { get; set; } = 1;
 
-    public float Rent { get; set; }
+    public decimal Rent { get; set; }
 
     public int UnitTypeId { get; set; }
 

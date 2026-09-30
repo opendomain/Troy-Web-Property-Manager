@@ -26,6 +26,17 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-page="/Privacy">Privacy</a>
                         </li>
+
+                        @if (User.IsInRole(AppRoles.PropertyManager))
+                        {
+                            <li class="nav-item"><a class="nav-link text-dark" asp-area="" asp-controller="Properties" asp-action="Index">Properties</a></li>
+                            <li class="nav-item"><a class="nav-link text-dark" asp-area="" asp-controller="Applications" asp-action="Index">Applications</a></li>
+                        }
+                        else if (User.IsInRole(AppRoles.Applicant))
+                        {
+                            <li class="nav-item"><a class="nav-link text-dark" asp-area="" asp-controller="Units" asp-action="Index">Available units</a></li>
+                            <li class="nav-item"><a class="nav-link text-dark" asp-area="" asp-controller="Applications" asp-action="Index">My applications</a></li>
+                        }
                     </ul>
                     <partial name="_LoginPartial" />
                 </div>
@@ -34,8 +45,29 @@
     </header>
     <div class="container">
         <main role="main" class="pb-3">
+            @if (TempData["Message"] is string message)
+            {
+                <div class="alert alert-success alert-dismissible fade show" role="status">
+                    @message
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
+            @if (TempData["Error"] is string error)
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @error
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
             @RenderBody()
         </main>
+    </div>
+
+    @* Shared modal; its content is loaded from partial views by site.js. *@
+    <div class="modal fade" id="app-modal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content"></div>
+        </div>
     </div>
 
     <footer class="border-top footer text-muted">

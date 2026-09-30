@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Troy_Web_Property_Manager.Models;
@@ -38,6 +39,15 @@ namespace Troy_Web_Property_Manager.Data
                 entity.Property(e => e.Email).HasMaxLength(50);
                 entity.Property(e => e.Name).HasMaxLength(50);
                 entity.Property(e => e.Phone).HasMaxLength(50);
+                entity.Property(e => e.UserId).HasMaxLength(450);
+
+                // One applicant profile per user
+                entity.HasIndex(e => e.UserId).IsUnique();
+
+                entity.HasOne<IdentityUser>().WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.SetNull)
+                    .HasConstraintName("FK_Applicant_AspNetUsers");
             });
 
             modelBuilder.Entity<ApplicationStatusHistory>(entity =>
@@ -46,7 +56,8 @@ namespace Troy_Web_Property_Manager.Data
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.ChangedDate).HasColumnType("datetime");
-                entity.Property(e => e.Comment).HasMaxLength(50);
+                entity.Property(e => e.Comment).HasMaxLength(500);
+                entity.Property(e => e.ChangedByUser).HasMaxLength(450);
                 entity.Property(e => e.RentalApplicationId).HasColumnName("RentalApplicationID");
 
                 entity.HasOne(d => d.RentalApplication).WithMany(p => p.ApplicationStatusHistories)
@@ -144,7 +155,7 @@ namespace Troy_Web_Property_Manager.Data
                 entity.Property(e => e.Id).HasColumnName("id");
                 // DB defaults are kept for raw SQL inserts; EF always sends the value so 0 bedrooms / 0 rent are stored as-is
                 entity.Property(e => e.Bedrooms).HasDefaultValue(1, "DF_Unit_Bedrooms").ValueGeneratedNever();
-                entity.Property(e => e.Rent).HasDefaultValue(0f, "DF_Unit_Rent").ValueGeneratedNever();
+                entity.Property(e => e.Rent).HasPrecision(10, 2).HasDefaultValue(0m, "DF_Unit_Rent").ValueGeneratedNever();
                 entity.Property(e => e.UnitNumber).HasMaxLength(50);
                 entity.Property(e => e.UnitTypeId).HasColumnName("UnitTypeID");
 
