@@ -132,6 +132,10 @@ namespace Troy_Web_Property_Manager.Data
                 entity.Property(e => e.StartDate).HasColumnType("datetime");
                 entity.Property(e => e.UnitId).HasColumnName("UnitID");
 
+                // Covers the "is this unit leased today?" check (LeaseRules.ActiveOn), which runs on the Available
+                // units page, the Properties page, submit and approve. It starts with UnitID, so it also serves the FK.
+                entity.HasIndex(e => new { e.UnitId, e.StartDate, e.EndDate }, "IX_Lease_UnitID_Term");
+
                 entity.HasOne(d => d.RentalApplication).WithMany(p => p.Leases)
                     .HasForeignKey(d => d.RentalApplicationId)
                     .OnDelete(DeleteBehavior.ClientSetNull)
