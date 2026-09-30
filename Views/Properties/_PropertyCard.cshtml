@@ -22,7 +22,7 @@
                 <tr>
                     <td>@unit.UnitNumber</td>
                     <td>@unit.Bedrooms</td>
-                    <td>@unit.MonthlyRent.ToString("C0")</td>
+                    <td>@unit.MonthlyRent.ToString("C")</td>
                     @* Inactive types still show on units that already have them. *@
                     <td>@unit.UnitTypeName @(unit.UnitTypeIsActive ? "" : "(inactive)")</td>
                     @* Worked out in SQL from today's lease dates (2.d) - not a stored flag. *@

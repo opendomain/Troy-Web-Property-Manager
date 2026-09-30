@@ -36,8 +36,11 @@ namespace Troy_Web_Property_Manager.Services
     /// never touch each other's version, so they don't interfere; a second save to the same section finds the version
     /// changed and is rejected as stale.</para>
     /// </remarks>
-    public class ApplicationService(ApplicationDbContext db)
+    public class ApplicationService(ApplicationDbContext db, BusinessClock? clock = null)
     {
+        // "Now" and "today" in the business's time zone (see BusinessClock). Tests that don't pass one get the server's.
+        private readonly BusinessClock _clock = clock ?? BusinessClock.Local;
+
         /// <summary>Section 1's field keys start with this, matching the input names on the application page.</summary>
         public const string ApplicantInformationPrefix = nameof(ApplicationEditorViewModel.ApplicantInformation) + ".";
 
@@ -79,7 +82,7 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         private Task<bool> UnitHasActiveLeaseAsync(int unitId)
         {
-            return db.Leases.Where(l => l.UnitId == unitId).AnyAsync(LeaseRules.ActiveOn(DateTime.Today));
+            return db.Leases.Where(l => l.UnitId == unitId).AnyAsync(LeaseRules.ActiveOn(_clock.Today));
         }
 
         /// <summary>
@@ -149,7 +152,7 @@ namespace Troy_Web_Property_Manager.Services
                 UnitId = unitId,
                 Applicant = applicant,
                 Status = (long)ApplicationStatus.Draft,
-                Created = DateTime.Now,
+                Created = _clock.Now,
                 ApplicantInformationVersion = Guid.NewGuid(),
                 ResidenceHistoryVersion = Guid.NewGuid()
             };
@@ -278,7 +281,7 @@ namespace Troy_Web_Property_Manager.Services
                 Id = application.Id,
                 Section = current,
                 Status = (ApplicationStatus)application.Status,
-                UnitLabel = $"{application.Unit.Property.Name}, unit {application.Unit.UnitNumber} ({application.Unit.MonthlyRent:C0}/month)",
+                UnitLabel = $"{application.Unit.Property.Name}, unit {application.Unit.UnitNumber} ({application.Unit.MonthlyRent:C}/month)",
                 ApplicantInformation = new()
                 {
                     Name = info.Name,
@@ -450,7 +453,7 @@ namespace Troy_Web_Property_Manager.Services
                 return ServiceResult.Error(string.Join(" ", blockers));
             }
             ChangeStatus(application, ApplicationStatus.Submitted, user);
-            application.Submitted = DateTime.Now;
+            application.Submitted = _clock.Now;
             var (saved, _) = await SaveSectionsAsync(id, ChangedBeforeSubmitMessage,
                 (ApplicationSection.ApplicantInformation, applicantInformationVersion),
                 (ApplicationSection.ResidenceHistory, residenceHistoryVersion));
@@ -494,7 +497,7 @@ namespace Troy_Web_Property_Manager.Services
             application!.ApplicationApplicants.Add(new ApplicationApplicant
             {
                 Applicant = await GetOrCreateProfileAsync(userId),
-                Added = DateTime.Now,
+                Added = _clock.Now,
                 AddedByUser = user.Id
             });
             // The application row doesn't change otherwise, so force the status check: no adding to one that was just
@@ -535,7 +538,7 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>
-        /// Withdraw (Challenge a). Works from Draft, Submitted or Returned - the state machine decides, so you can't
+        /// Withdraw (Challenge a). Works from Draft, Submitted, Returned or Under Review - the state machine decides, so you can't
         /// withdraw something that's already final. If a manager changes the status at the same moment, the
         /// concurrency token makes this fail instead of overwriting (we don't want an approval with a lease quietly
         /// turning into Withdrawn).
@@ -560,14 +563,6 @@ namespace Troy_Web_Property_Manager.Services
             var claim = await db.RentalApplications.Where(a => a.Id == id)
                 .Select(a => new { a.Status, a.ReviewerUser }).FirstOrDefaultAsync();
             return claim is not null && ApplicationWorkflow.CanReview((ApplicationStatus)claim.Status) && claim.ReviewerUser == user.Id;
-        }
-
-        /// <summary>True if the application is Under Review, so a manager can release it back to the queue.</summary>
-        public async Task<bool> CanReleaseAsync(int id, CurrentUser user)
-        {
-            if (!user.IsManager) return false;
-            var status = await Visible(user).Where(a => a.Id == id).Select(a => (long?)a.Status).FirstOrDefaultAsync();
-            return status is long s && ApplicationWorkflow.CanRelease((ApplicationStatus)s);
         }
 
         /// <summary>
@@ -706,7 +701,7 @@ namespace Troy_Web_Property_Manager.Services
                 {
                     return ServiceResult.Error("This unit already has an active lease.");
                 }
-                var start = DateTime.Today;
+                var start = _clock.Today;
                 db.Leases.Add(new Lease
                 {
                     UnitId = application.UnitId,
@@ -730,6 +725,8 @@ namespace Troy_Web_Property_Manager.Services
         public async Task<List<HistoryItemViewModel>> GetHistoryAsync(int id, CurrentUser user)
         {
             if (!user.IsManager) return [];
+            // Same visibility as everything else, so a never-submitted draft's history stays private too.
+            if (!await Visible(user).AnyAsync(a => a.Id == id)) return [];
 
             // Left join to AspNetUsers to get the email of whoever made the change. If that user's been deleted we
             // still show the row, just marked as a deleted user.
@@ -821,7 +818,7 @@ namespace Troy_Web_Property_Manager.Services
 
             note.Notes = model.Notes?.Trim() ?? "";
             note.UpdatedByUser = user.Id;
-            note.UpdatedDate = DateTime.Now;
+            note.UpdatedDate = _clock.Now;
             note.Version = Guid.NewGuid();
 
             try
@@ -1029,7 +1026,7 @@ namespace Troy_Web_Property_Manager.Services
         /// when, and any move out of it (review, release, withdraw) clears both. The database's
         /// CK_RentalApplications_ReviewClaim constraint backs that up.
         /// </remarks>
-        private static void ChangeStatus(RentalApplication application, ApplicationStatus to, CurrentUser user,
+        private void ChangeStatus(RentalApplication application, ApplicationStatus to, CurrentUser user,
             ReviewOutcome? outcome = null, string? comment = null)
         {
             var from = (ApplicationStatus)application.Status;
@@ -1037,7 +1034,7 @@ namespace Troy_Web_Property_Manager.Services
             {
                 throw new InvalidOperationException($"An application can't move from {from} to {to}.");
             }
-            var now = DateTime.Now;
+            var now = _clock.Now;
             application.ApplicationStatusHistories.Add(new ApplicationStatusHistory
             {
                 PreviousStatus = application.Status,

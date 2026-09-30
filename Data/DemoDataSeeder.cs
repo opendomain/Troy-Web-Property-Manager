@@ -37,7 +37,8 @@ namespace Troy_Web_Property_Manager.Data
         private const int ApplicationCount = 45;
 
         /// <summary>Seeds the demo data unless there are already properties. Returns false if it skipped.</summary>
-        public static async Task<bool> SeedAsync(ApplicationDbContext db, UserManager<IdentityUser> userManager)
+        /// <param name="now">"Now" in the business's time zone (BusinessClock); defaults to the server's clock.</param>
+        public static async Task<bool> SeedAsync(ApplicationDbContext db, UserManager<IdentityUser> userManager, DateTime? now = null)
         {
             if (await db.Properties.AnyAsync()) return false;
 
@@ -53,7 +54,7 @@ namespace Troy_Web_Property_Manager.Data
 
             var properties = CreateProperties(faker, await db.UnitTypes.ToListAsync());
             var applicants = applicantUsers.Select(user => CreateApplicant(faker, user)).ToList();
-            var applications = new ApplicationGenerator(faker, managers, DateTime.Now)
+            var applications = new ApplicationGenerator(faker, managers, now ?? DateTime.Now)
                 .Generate(properties.SelectMany(p => p.Units).ToList(), applicants);
 
             db.Properties.AddRange(properties);

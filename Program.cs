@@ -45,6 +45,8 @@ namespace Troy_Web_Property_Manager
                 // Only an explicit [Required] counts, so display-only view model properties don't trip validation.
                 options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
             });
+            // "Now" and "today" in the business's time zone (BusinessTimeZone in appsettings), not the server's.
+            builder.Services.AddSingleton(BusinessClock.FromConfiguration(builder.Configuration));
             // Scoped = one per request, sharing that request's DbContext (also scoped).
             builder.Services.AddScoped<PropertyService>();
             builder.Services.AddScoped<ApplicationService>();
@@ -184,7 +186,8 @@ namespace Troy_Web_Property_Manager
             // Only runs on an empty database (no properties yet), so it never messes with real data.
             var seeded = await DemoDataSeeder.SeedAsync(
                     scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
-                    scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>());
+                    scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(),
+                    scope.ServiceProvider.GetRequiredService<BusinessClock>().Now);
 
             if (seeded)
             {

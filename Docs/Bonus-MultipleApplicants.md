@@ -150,3 +150,8 @@ A profile whose login was deleted has no `UserId`, so its `AddedByUser` is store
 - **Adding by email reveals whether an applicant account exists** for that email. That's unavoidable when inviting by email into existing accounts; the message doesn't say anything more than that.
 - **For added applicants, the one-open-application-per-unit rule is checked in code, not by a database index.** The existing unique index only covers the starter. Two simultaneous requests could, in theory, both add the same person to two different open applications for one unit.
 - **Only tested on SQLite.** The concurrency tests run on SQLite. The SQL Server behavior (row locks on the compare-and-swap) is the standard `UPDATE ... WHERE` pattern, but it hasn't been exercised against the real database here.
+- People can be added to an application without agreeing to it (AddApplicantAsync). Applicant A can put B on A's draft. After that:
+   - B sees A's details.
+   - If B clicks Apply on that unit, StartOnceAsync (line 137) sends B back to A's application instead of creating their own, until B leaves it.
+Race conditions not backed by the database (low)
+- Only the starter is covered by the one-open-application-per-unit rule (ApplicationDbContext.cs:238). The unique index is on RentalApplications(ApplicantId, UnitId), which records only the starter. For added applicants the rule is a check in code (AddApplicantAsync, line 490). If two applications add the same person for the same unit at the same moment, both can succeed.

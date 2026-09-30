@@ -935,9 +935,10 @@ namespace Troy_Web_Property_Manager.Tests.Services
 
             AssertError(await Service().ReleaseAsync(waiting, ManagerUser), "Only applications under review");
             Assert.True((await Service().ReleaseAsync(claimed, OtherApplicantUser)).Forbidden);
-            Assert.True(await Service().CanReleaseAsync(claimed, OtherManagerUser));
-            Assert.False(await Service().CanReleaseAsync(waiting, ManagerUser));
-            Assert.False(await Service().CanReleaseAsync(claimed, OtherApplicantUser));
+            // The page's Release button (and the Release modal) go by the editor's CanRelease flag.
+            Assert.True((await Service().GetEditorAsync(claimed, null, OtherManagerUser))!.CanRelease);
+            Assert.False((await Service().GetEditorAsync(waiting, null, ManagerUser))!.CanRelease);
+            Assert.False((await Service().GetEditorAsync(claimed, null, OtherApplicantUser))!.CanRelease);
             Assert.Equal((long)ApplicationStatus.UnderReview, (await LoadAsync(claimed)).Status);
         }
 
@@ -1217,6 +1218,14 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Equal("manager-1@example.com", history[^1].ChangedBy);
             Assert.Equal("Income too low.", history[^1].Comment);
             Assert.Empty(await Service().GetHistoryAsync(id, ApplicantUser));
+        }
+
+        [Fact]
+        public async Task History_OfANeverSubmittedDraft_IsHiddenFromManagers()
+        {
+            var id = await StartAsync();
+
+            Assert.Empty(await Service().GetHistoryAsync(id, ManagerUser));
         }
     }
 }

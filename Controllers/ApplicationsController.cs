@@ -370,9 +370,11 @@ namespace Troy_Web_Property_Manager.Controllers
         private ConfirmViewModel ConfirmRemoveApplicant(int id, ApplicationApplicantViewModel applicant)
         {
             var action = Url.Action(nameof(RemoveApplicant), new { id, applicantId = applicant.ApplicantId })!;
+            // No email if they'd already gone by the time a failed remove redraws this.
+            var who = string.IsNullOrEmpty(applicant.Email) ? "this applicant" : applicant.Email;
             return applicant.IsYou
                 ? new("Leave application", "Leave this application? You won't be able to see it any more unless someone adds you back.", action, "Leave")
-                : new("Remove applicant", $"Remove {applicant.Email} from this application? They won't be able to see it any more.", action, "Remove");
+                : new("Remove applicant", $"Remove {who} from this application? They won't be able to see it any more.", action, "Remove");
         }
 
         // ---------------- Withdraw (modal, Challenge a) ----------------
