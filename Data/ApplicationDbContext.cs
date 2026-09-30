@@ -183,26 +183,36 @@ namespace Troy_Web_Property_Manager.Data
             // The application itself: one unit, one applicant, a status, and the two "section saved" flags (4.a, 4.b.ii).
             modelBuilder.Entity<RentalApplication>(entity =>
             {
-                entity.ToTable("RentalApplications");
+                // A claim (reviewer + when) is there exactly while it's Under Review (7), never otherwise.
+                entity.ToTable("RentalApplications", t => t.HasCheckConstraint("CK_RentalApplications_ReviewClaim",
+                    "([Status] = 7 AND [ReviewerUser] IS NOT NULL AND [ReviewClaimed] IS NOT NULL) OR " +
+                    "([Status] <> 7 AND [ReviewerUser] IS NULL AND [ReviewClaimed] IS NULL)"));
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.ApplicantId).HasColumnName("ApplicantID");
                 entity.Property(e => e.Created).HasColumnType("datetime");
                 entity.Property(e => e.Submitted).HasColumnType("datetime");
                 entity.Property(e => e.UnitId).HasColumnName("UnitID");
+                entity.Property(e => e.ReviewerUser).HasMaxLength(450);
+                entity.Property(e => e.ReviewClaimed).HasColumnType("datetime");
 
                 // Every update checks the status hasn't changed since we read it, so if two changes collide
                 // (say, a withdraw and an approval at the same time) one fails instead of quietly overwriting the other.
                 entity.Property(e => e.Status).IsConcurrencyToken();
+                // Same for the claim: if it was released and claimed by someone else in between, the status is Under
+                // Review both times, so the reviewer is what tells the two claims apart.
+                entity.Property(e => e.ReviewerUser).IsConcurrencyToken();
 
-                // At most one open (Draft, Submitted or Returned) application per applicant and unit.
+                // At most one open (Draft, Submitted, Returned or Under Review) application per applicant and unit.
                 // It's a filtered unique index, so closed ones (Approved/Denied/Withdrawn) don't count and you can
                 // apply again after withdrawing. This is also what saves us when someone double-clicks Apply.
                 entity.HasIndex(e => new { e.ApplicantId, e.UnitId }, "IX_RentalApplications_OpenPerApplicantUnit")
                     .IsUnique()
-                    .HasFilter("[Status] IN (1, 2, 3)");
+                    .HasFilter("[Status] IN (1, 2, 3, 7)");
                 // Need this one too - the filtered index above only covers open applications, so it's no good for FK lookups.
                 entity.HasIndex(e => e.ApplicantId, "IX_RentalApplications_ApplicantID");
+                // The review queue: waiting (Submitted) applications oldest first, and each manager's claims.
+                entity.HasIndex(e => new { e.Status, e.Submitted }, "IX_RentalApplications_Status_Submitted");
 
                 entity.HasOne(d => d.Applicant).WithMany(p => p.RentalApplications)
                     .HasForeignKey(d => d.ApplicantId)

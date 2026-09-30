@@ -10,7 +10,7 @@
         @foreach (var item in Model)
         {
             <li class="list-group-item">
-                <strong>@(item.FromStatus is null ? "Created" : $"{item.FromStatus} → {item.ToStatus}")</strong>
+                <strong>@(item.FromStatus is { } from ? $"{from.DisplayName()} → {item.ToStatus.DisplayName()}" : "Created")</strong>
                 @if (item.Outcome is not null)
                 {
                     <span>(@item.Outcome)</span>

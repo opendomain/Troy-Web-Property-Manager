@@ -11,7 +11,7 @@ namespace Troy_Web_Property_Manager.Tests
     /// <summary>
     /// A throwaway in-memory SQLite database built from the real ApplicationDbContext model, so foreign keys, unique
     /// indexes and the Status concurrency token all actually work. It sticks around as long as the connection is open.
-    /// It always has the status lookup. With sample data (the default) you also get two unit types, three users, one
+    /// It always has the status lookup. With sample data (the default) you also get two unit types, four users, one
     /// property and two units; without it you only get the lookups Program seeds, like a brand new database.
     /// </summary>
     public sealed class TestDatabase : IDisposable
@@ -19,6 +19,7 @@ namespace Troy_Web_Property_Manager.Tests
         public static readonly CurrentUser ApplicantUser = new("applicant-1", IsManager: false);
         public static readonly CurrentUser OtherApplicantUser = new("applicant-2", IsManager: false);
         public static readonly CurrentUser ManagerUser = new("manager-1", IsManager: true);
+        public static readonly CurrentUser OtherManagerUser = new("manager-2", IsManager: true);
 
         private readonly SqliteConnection _connection = new("DataSource=:memory:");
         private readonly List<ApplicationDbContext> _contexts = [];
@@ -48,7 +49,7 @@ namespace Troy_Web_Property_Manager.Tests
                 return;
             }
 
-            foreach (var user in new[] { ApplicantUser, OtherApplicantUser, ManagerUser })
+            foreach (var user in new[] { ApplicantUser, OtherApplicantUser, ManagerUser, OtherManagerUser })
             {
                 db.Users.Add(new IdentityUser { Id = user.Id, UserName = $"{user.Id}@example.com", Email = $"{user.Id}@example.com" });
             }

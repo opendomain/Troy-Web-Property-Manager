@@ -55,7 +55,7 @@ else
                         <td><a asp-action="Edit" asp-route-id="@item.Id">@item.Id</a></td>
                         <td>@item.PropertyName · @item.UnitNumber</td>
                         <td>@item.Applicant</td>
-                        <td>@item.Status</td>
+                        <td>@item.Status.DisplayName()</td>
                         @* Times are stored in server local time, so they're shown as-is. *@
                         <td>@item.SubmittedAt?.ToShortDateString()</td>
                     </tr>
