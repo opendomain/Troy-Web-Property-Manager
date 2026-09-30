@@ -6,13 +6,14 @@
 <h1>@ViewData["Title"]</h1>
 
 @*
-    The application list (6.a). Both roles use this same view - the controller and service decide which rows you get
+    The application list (6.a). Both roles use this same view - the API and service decide which rows you get
     (applicants see their own, managers see all), so apart from the title there's no role logic in here.
 *@
-@* GET form: the filters go into the query string and ApplicationService.ListAsync applies them in SQL. *@
-@* Using GET instead of POST means filtering is safe to repeat, you can bookmark it, and there's no antiforgery
+@* GET form: the filters go into the query string. The data grid below sends them with each request to
+   /api/applications, where ApplicationService.ListAsync applies them in SQL, and submitting it reloads just the grid.
+   Using GET instead of POST means filtering is safe to repeat, you can bookmark it, and there's no antiforgery
    token to worry about. The status dropdown comes from the enum, so it always has every status. *@
-<form method="get" class="row g-2 align-items-end mb-3">
+<form id="application-filters" method="get" class="row g-2 align-items-end mb-3">
     <div class="col-auto">
         <label asp-for="Status" class="form-label"></label>
         <select class="form-select" asp-for="Status" asp-items="Html.GetEnumSelectList<ApplicationStatus>()">
@@ -31,36 +32,27 @@
     </div>
 </form>
 
-@if (Model.Items.Count == 0)
-{
-    <p class="text-muted">No applications found.</p>
+@* The column keys are the sort values /api/applications accepts (ApplicationSortColumn); the fields are its JSON
+   properties. Newest application first until someone picks a column. Submitted times are stored in server local
+   time, so they're shown as-is. *@
+@{
+    var grid = new DataGridViewModel
+    {
+        Id = "application-grid",
+        DataUrl = Url.RouteUrl("ListApplications")!,
+        Caption = (string)ViewData["Title"]!,
+        FilterFormId = "application-filters",
+        DefaultSort = nameof(ApplicationSortColumn.Id),
+        DefaultDir = "desc",
+        EmptyText = "No applications found.",
+        Columns =
+        [
+            new() { Key = nameof(ApplicationSortColumn.Id), Title = "#", Field = "id", Href = Url.Action("Edit") + "/{id}" },
+            new() { Key = nameof(ApplicationSortColumn.Property), Title = "Property / unit", Template = "{propertyName} · {unitNumber}" },
+            new() { Key = nameof(ApplicationSortColumn.Applicant), Title = "Applicant", Field = "applicant" },
+            new() { Key = nameof(ApplicationSortColumn.Status), Title = "Status", Field = "statusName" },
+            new() { Key = nameof(ApplicationSortColumn.Submitted), Title = "Submitted", Field = "submittedAt", Format = DataGridFormat.Date }
+        ]
+    };
 }
-else
-{
-    <div class="table-responsive">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th scope="col">#</th>
-                    <th scope="col">Property / unit</th>
-                    <th scope="col">Applicant</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Submitted</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in Model.Items)
-                {
-                    <tr>
-                        <td><a asp-action="Edit" asp-route-id="@item.Id">@item.Id</a></td>
-                        <td>@item.PropertyName · @item.UnitNumber</td>
-                        <td>@item.Applicant</td>
-                        <td>@item.Status.DisplayName()</td>
-                        @* Times are stored in server local time, so they're shown as-is. *@
-                        <td>@item.SubmittedAt?.ToShortDateString()</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
+<vc:data-grid grid="grid" />

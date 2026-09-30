@@ -1,4 +1,5 @@
 using System.Data;
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
@@ -841,25 +842,78 @@ namespace Troy_Web_Property_Manager.Services
 
         // ---------------- List ----------------
         /// <summary>
-        /// The application list (6.a). The filters are stacked onto the IQueryable so SQL does the work - each
-        /// <c>Where</c> only gets added if that filter is set, and nothing runs until <c>ToListAsync</c>. Starting from
-        /// <see cref="Visible"/> is what limits applicants to their own.
+        /// One page of the application list (6.a), and how many applications match the filters. The filters are
+        /// stacked onto the IQueryable so SQL does the work - each <c>Where</c> only gets added if that filter is set.
+        /// Starting from <see cref="Visible"/> is what limits applicants to their own.
         /// </summary>
-        public Task<List<ApplicationListItemViewModel>> ListAsync(ApplicationStatus? status, int? propertyId, CurrentUser user)
+        /// <remarks>
+        /// <para>Two queries: a <c>COUNT</c> over the filtered rows, then the page itself with <c>ORDER BY ... OFFSET
+        /// ... FETCH</c>, so only one page of rows comes back from SQL Server. Every sort ends with the application
+        /// number, so rows that tie on the sort column keep the same order from page to page (without it SQL Server
+        /// is free to return ties in any order, and a row could show up on two pages or none).</para>
+        /// <para>A page past the end (say the filter changed, or rows were withdrawn since) comes back as the last
+        /// page, and the result says which page it is. The count and the page aren't one snapshot, so if someone
+        /// submits in between, the total can be off by that one row until the next load - fine for a list.</para>
+        /// </remarks>
+        public async Task<PagedResult<ApplicationListItemViewModel>> ListAsync(ApplicationListQuery query, CurrentUser user)
         {
-            var query = Visible(user).AsNoTracking();
-            if (status is not null) query = query.Where(a => a.Status == (long)status.Value);
-            if (propertyId is not null) query = query.Where(a => a.Unit.PropertyId == propertyId);
-            return query.OrderByDescending(a => a.Id).Select(a => new ApplicationListItemViewModel
+            var filtered = Visible(user).AsNoTracking();
+            if (query.Status is not null) filtered = filtered.Where(a => a.Status == (long)query.Status.Value);
+            if (query.PropertyId is not null) filtered = filtered.Where(a => a.Unit.PropertyId == query.PropertyId);
+
+            var total = await filtered.CountAsync();
+            // The controllers validate these, but the service shouldn't trust its callers with the size of a query.
+            var pageSize = Math.Clamp(query.PageSize, 1, ApplicationListQuery.MaxPageSize);
+            var lastPage = Math.Max(1, (total + pageSize - 1) / pageSize);
+            var page = Math.Clamp(query.Page, 1, lastPage);
+
+            var items = await Sorted(filtered, query.Sort, query.Dir == SortDirection.Desc)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(a => new ApplicationListItemViewModel
+                {
+                    Id = a.Id,
+                    PropertyName = a.Unit.Property.Name,
+                    UnitNumber = a.Unit.UnitNumber,
+                    // The email on this application, or the one from their profile if they haven't saved the section yet.
+                    Applicant = a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email,
+                    Status = (ApplicationStatus)a.Status,
+                    SubmittedAt = a.Submitted
+                }).ToListAsync();
+
+            return new PagedResult<ApplicationListItemViewModel>(items, total, page, pageSize);
+        }
+
+        /// <summary>
+        /// The ORDER BY for the list. Each column's key is the same expression the row shows, so the sort matches what
+        /// you see; the application number is always last as the tiebreaker.
+        /// </summary>
+        private static IOrderedQueryable<RentalApplication> Sorted(IQueryable<RentalApplication> query,
+            ApplicationSortColumn column, bool descending)
+        {
+            return column switch
             {
-                Id = a.Id,
-                PropertyName = a.Unit.Property.Name,
-                UnitNumber = a.Unit.UnitNumber,
-                // The email on this application, or the one from their profile if they haven't saved the section yet.
-                Applicant = a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email,
-                Status = (ApplicationStatus)a.Status,
-                SubmittedAt = a.Submitted
-            }).ToListAsync();
+                ApplicationSortColumn.Property => ThenBy(ThenBy(OrderBy(query, a => a.Unit.Property.Name, descending),
+                    a => a.Unit.UnitNumber, descending), a => a.Id, descending),
+                ApplicationSortColumn.Applicant => ThenBy(OrderBy(query,
+                    a => a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email, descending),
+                    a => a.Id, descending),
+                // By the lookup table's name, so it's alphabetical rather than by the enum's number.
+                ApplicationSortColumn.Status => ThenBy(OrderBy(query, a => a.StatusNavigation.Name, descending),
+                    a => a.Id, descending),
+                ApplicationSortColumn.Submitted => ThenBy(OrderBy(query, a => a.Submitted, descending), a => a.Id, descending),
+                _ => OrderBy(query, a => a.Id, descending)
+            };
+        }
+
+        private static IOrderedQueryable<T> OrderBy<T, TKey>(IQueryable<T> query, Expression<Func<T, TKey>> key, bool descending)
+        {
+            return descending ? query.OrderByDescending(key) : query.OrderBy(key);
+        }
+
+        private static IOrderedQueryable<T> ThenBy<T, TKey>(IOrderedQueryable<T> query, Expression<Func<T, TKey>> key, bool descending)
+        {
+            return descending ? query.ThenByDescending(key) : query.ThenBy(key);
         }
 
         // ---------------- Section versions ----------------

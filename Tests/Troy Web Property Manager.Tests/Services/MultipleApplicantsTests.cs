@@ -121,7 +121,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var editor = await Service().GetEditorAsync(id, null, OtherApplicantUser);
             Assert.NotNull(editor);
             Assert.True(editor.CanEdit);
-            Assert.Equal(new[] { id }, (await Service().ListAsync(null, null, OtherApplicantUser)).Select(a => a.Id));
+            Assert.Equal(new[] { id }, (await Service().ListAsync(new(), OtherApplicantUser)).Items.Select(a => a.Id));
 
             await CompleteAsync(id, OtherApplicantUser);
             var (info, history) = await VersionsAsync(id);
@@ -150,7 +150,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var (info, history) = await VersionsAsync(id);
 
             Assert.Null(await Service().GetEditorAsync(id, null, ThirdApplicantUser));
-            Assert.Empty(await Service().ListAsync(null, null, ThirdApplicantUser));
+            Assert.Empty((await Service().ListAsync(new(), ThirdApplicantUser)).Items);
             Assert.True((await Service().SaveApplicantInformationAsync(id, Info(), info, ThirdApplicantUser)).NotFound);
             Assert.True((await Service().SaveResidenceAsync(id, Residence(history), ThirdApplicantUser)).NotFound);
             Assert.True((await Service().WithdrawAsync(id, ThirdApplicantUser)).NotFound);

@@ -1,0 +1,55 @@
+@model DataGridViewModel
+@using System.Text.Json
+@using Troy_Web_Property_Manager.ViewComponents
+@*
+    The view for DataGridViewComponent: the empty table, the status line and the pager. grid.js finds it by
+    data-grid (the grid's settings as JSON - Razor HTML-encodes the attribute), fetches rows from the endpoint and
+    fills in the body, the sort arrows and the pager. Rows are added as text, so nothing from the data is ever parsed
+    as HTML.
+*@
+<div id="@Model.Id" class="data-grid" data-grid="@JsonSerializer.Serialize(Model, DataGridViewComponent.SettingsJson)">
+    <div class="table-responsive">
+        <table class="table table-hover mb-2">
+            <caption class="visually-hidden">@Model.Caption</caption>
+            <thead>
+                <tr>
+                    @foreach (var column in Model.Columns)
+                    {
+                        @* aria-sort starts as "none" on sortable columns; grid.js sets ascending/descending on the sorted one. *@
+                        <th scope="col" aria-sort="@(column.Sortable ? "none" : null)">
+                            @if (column.Sortable)
+                            {
+                                <button type="button" class="data-grid-sort" data-sort="@column.Key">
+                                    @column.Title<span class="data-grid-sort-icon" aria-hidden="true"></span>
+                                </button>
+                            }
+                            else
+                            {
+                                @column.Title
+                            }
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    @* Loading / nothing found / error text. role="status" so screen readers hear it. *@
+    <p class="data-grid-status text-muted" role="status">Loading…</p>
+    <div class="data-grid-footer d-flex flex-wrap align-items-center gap-3" hidden>
+        <span class="data-grid-summary text-muted"></span>
+        <nav aria-label="@Model.Caption pages">
+            <ul class="pagination mb-0"></ul>
+        </nav>
+        <label class="d-flex align-items-center gap-2 ms-auto">
+            Rows per page
+            <select class="form-select form-select-sm w-auto data-grid-page-size">
+                @foreach (var size in Model.PageSizes)
+                {
+                    <option value="@size" selected="@(size == Model.PageSize)">@size</option>
+                }
+            </select>
+        </label>
+    </div>
+    <noscript><p class="text-muted">This list needs JavaScript turned on.</p></noscript>
+</div>

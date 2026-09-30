@@ -34,3 +34,22 @@ body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Data grid headers (DataGridViewComponent): the sort buttons look like the header text, not like links. */
+.data-grid-sort {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.data-grid-sort:hover {
+  text-decoration: underline;
+}
+
+.data-grid table[aria-busy="true"] tbody {
+  opacity: 0.5;
+}

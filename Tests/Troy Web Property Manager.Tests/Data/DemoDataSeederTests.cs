@@ -296,7 +296,7 @@ namespace Troy_Web_Property_Manager.Tests.Data
             // Managers only see applications that were submitted at least once; never-submitted drafts stay private.
             var submitted = applications.Where(a => a.Submitted != null).ToList();
             Assert.NotEmpty(submitted);
-            Assert.Equal(submitted.Count, (await service.ListAsync(null, null, manager)).Count);
+            Assert.Equal(submitted.Count, (await service.ListAsync(new(), manager)).Total);
             foreach (var application in applications)
             {
                 var editor = await service.GetEditorAsync(application.Id, null, manager);
