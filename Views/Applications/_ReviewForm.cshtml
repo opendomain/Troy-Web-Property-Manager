@@ -1,5 +1,13 @@
 @model ReviewViewModel
 @* data-modal-form: site.js posts this with fetch; on success the page reloads (status, buttons and history change). *@
+@*
+    Modal for a manager's review (5.a): Approve, Return or Deny, plus a comment.
+    - Managers only (the GET is role-restricted, and it's a 404 unless the application is Submitted).
+    - "Return and Deny need a comment" depends on which outcome was picked, so it's checked on the server
+      (ReviewViewModel.Validate). If it fails we get this partial back with a 422 and the message under Comment, and
+      the modal stays open with their choice still selected.
+    - On success we reload the whole page instead of one piece, since the status, buttons and history all change.
+*@
 <form asp-controller="Applications" asp-action="Review" asp-route-id="@Model.ApplicationId" method="post" data-modal-form>
     <div class="modal-header">
         <h5 class="modal-title">Review application #@Model.ApplicationId</h5>
@@ -9,6 +17,7 @@
         <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
         <fieldset class="mb-3">
             <legend class="form-label fs-6">Outcome</legend>
+            @* One radio per enum value, so these always match ReviewOutcome. *@
             @foreach (var outcome in Enum.GetValues<ReviewOutcome>())
             {
                 <div class="form-check">

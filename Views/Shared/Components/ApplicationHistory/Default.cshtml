@@ -1,4 +1,9 @@
 @model List<HistoryItemViewModel>
+@*
+    The view for ApplicationHistoryViewComponent (5.c: who, when, comment). MVC finds it here by convention
+    (Views/Shared/Components/ApplicationHistory/Default.cshtml). Managers only - the component returns nothing for
+    anyone else. Comments go out through @ so they're HTML-encoded; if someone types markup it just shows as text.
+*@
 <div class="card">
     <div class="card-header">History</div>
     <ul class="list-group list-group-flush">
@@ -10,7 +15,7 @@
                 {
                     <span>(@item.Outcome)</span>
                 }
-                @* ChangedAt is stored in server local time, so it is shown as-is. *@
+                @* ChangedAt is saved in server local time, so we show it as-is. *@
                 <div class="small text-muted">@item.ChangedBy · @item.ChangedAt.ToString("g")</div>
                 @if (!string.IsNullOrEmpty(item.Comment))
                 {

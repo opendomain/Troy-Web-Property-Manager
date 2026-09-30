@@ -2,7 +2,7 @@
 
 namespace Troy_Web_Property_Manager.ViewModels
 {
-    /// <summary>The applicant's Available units page: the property filter and the matching units.</summary>
+    /// <summary>The applicant's Available units page - the property filter and the units that match.</summary>
     public class AvailableUnitsPageViewModel
     {
         public int? PropertyId { get; set; }

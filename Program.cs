@@ -20,6 +20,11 @@ namespace Troy_Web_Property_Manager
                 options.UseSqlServer(connectionString));
             builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
+            // ASP.NET Identity handles users and roles (Technical 2.a). The default Identity UI gives us sign-up,
+            // log-in and log-out for free (1.a). I scaffolded Register into Areas/Identity so it can ask for a role (1.a.i).
+            // AddRoles is what makes [Authorize(Roles = ...)] and User.IsInRole(...) work. Users and roles live in
+            // the same database as everything else.
+            // RequireConfirmedAccount means new users have to click the email link (sent by EmailSender) before logging in.
             builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
                 .AddRoles<IdentityRole>()
                 .AddEntityFrameworkStores<ApplicationDbContext>();
@@ -27,15 +32,20 @@ namespace Troy_Web_Property_Manager
             builder.Services.Configure<SendGridOptions>(builder.Configuration.GetSection("SendGrid"));
             builder.Services.AddSingleton<IEmailSender, EmailSender>();
 
+            // I started from the Razor Pages template to get the Identity pages and layout, but the app itself is MVC:
+            // controllers, view models, Razor views, partials and view components (Technical 1.a).
             builder.Services.AddRazorPages();
 
             builder.Services.AddControllersWithViews(options =>
             {
-                // Validate antiforgery tokens on every MVC POST (Razor Pages already does this).
+                // Check the antiforgery token on every MVC POST (Razor Pages already does). Doing it globally means we
+                // can't forget [ValidateAntiForgeryToken] on an action. The form tag helper writes the token, and site.js
+                // sends the whole FormData (token and all) when it posts a modal form.
                 options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
-                // Only explicit [Required] attributes count, so display-only view-model properties never fail validation.
+                // Only an explicit [Required] counts, so display-only view model properties don't trip validation.
                 options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
             });
+            // Scoped = one per request, sharing that request's DbContext (also scoped).
             builder.Services.AddScoped<PropertyService>();
             builder.Services.AddScoped<ApplicationService>();
 
@@ -74,6 +84,11 @@ namespace Troy_Web_Property_Manager
         }
 
   
+        /// <summary>
+        /// Runs on startup (Technical 2.b): creates the database and applies migrations (2.b.i), then seeds it (2.b.ii).
+        /// Each step checks what's already there, so it's fine to run every time - and a fresh clone just works with
+        /// no manual database setup.
+        /// </summary>
         private static void CreateDatabase(WebApplication app)
         {
             // NOTE: use this method instead of "dotnet ef database update" command
@@ -88,7 +103,7 @@ namespace Troy_Web_Property_Manager
 
                 AddRequiredDataToDatabase(scope);
 
-                // Demo accounts share a known password, so demo data is never seeded outside Development.
+                // The demo accounts all share a known password, so only seed them in Development.
                 if (app.Environment.IsDevelopment())
                 {
                     SeedData(scope, app.Logger);
@@ -106,10 +121,15 @@ namespace Troy_Web_Property_Manager
             SeedLookups(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
         }
 
+        /// <summary>
+        /// Seeds the lookup tables (Technical 2.b.ii). This runs in every environment since the app doesn't work
+        /// without them - the Status rows back the RentalApplications.Status FK, and the unit types fill the dropdown.
+        /// Only adds rows that are missing.
+        /// </summary>
         private static void SeedLookups(ApplicationDbContext dbContext)
         {
-            // Status ids must match the ApplicationStatus enum values, so they're inserted explicitly
-            // (the id column is an identity, hence IDENTITY_INSERT). Only missing rows are added.
+            // The Status ids have to match the ApplicationStatus enum, so we insert them explicitly
+            // (the id column is an identity, hence IDENTITY_INSERT). Only the missing ones get added.
             var existingStatusIds = dbContext.Statuses.Select(s => s.Id).ToHashSet();
             var missingStatuses = Enum.GetValues<ApplicationStatus>()
                 .Where(s => !existingStatusIds.Contains((long)s))
@@ -126,8 +146,8 @@ namespace Troy_Web_Property_Manager
                 transaction.Commit();
             }
 
-            // Unit types are matched by name; an inactive type stays on units that already use it
-            // but can't be chosen for any other unit.
+            // Unit types are matched by name. An inactive type stays on units that already have it,
+            // but nobody can pick it for a new one.
             (string Name, bool IsActive)[] unitTypes =
             [
                 ("Apartment", true),
@@ -143,6 +163,7 @@ namespace Troy_Web_Property_Manager
             dbContext.SaveChanges();
         }
 
+        /// <summary>Creates the two Identity roles if they're not there yet.</summary>
         private static void SeedRoles(RoleManager<IdentityRole> roleManager)
         {
             foreach (var role in AppRoles.All)
@@ -154,9 +175,13 @@ namespace Troy_Web_Property_Manager
             }
         }
 
+        /// <summary>
+        /// Seeds demo data with Bogus (Technical 2.b.ii.1) - managers, applicants, properties, units, and applications
+        /// in every status. The details are in <see cref="DemoDataSeeder"/>.
+        /// </summary>
         private static void SeedData(IServiceScope scope, ILogger logger)
         {
-            // Only fills an empty database (no properties yet), so existing data is never touched.
+            // Only runs on an empty database (no properties yet), so it never messes with real data.
             var seeded = DemoDataSeeder.SeedAsync(
                     scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
                     scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>())

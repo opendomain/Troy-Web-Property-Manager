@@ -1,5 +1,12 @@
 @model ApplicationEditorViewModel
 @* Summary: a read-only view of both sections, reusing the same partials (IsReadOnly is true here). *@
+@*
+    The Summary (4.a.iii - read-only view of both sections, plus Submit).
+    It just reuses the two section partials instead of copying their markup, so it always matches them. The service
+    sets IsReadOnly = true here, which makes both partials read-only. The Submit button lives in Edit.cshtml, inside
+    the one form.
+*@
+@* Tell the applicant why Submit is greyed out (4.b.ii - both sections have to be saved first). *@
 @if (Model.CanEdit && !Model.CanSubmit)
 {
     <div class="alert alert-warning">Save both sections before submitting.</div>

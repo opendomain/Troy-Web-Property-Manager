@@ -3,6 +3,7 @@ using System.Collections.Generic;
 
 namespace Troy_Web_Property_Manager.Models;
 
+/// <summary>A property we manage. Property managers look after it and its units (2.b).</summary>
 public partial class Property
 {
     public int Id { get; set; }

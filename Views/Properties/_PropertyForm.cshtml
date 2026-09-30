@@ -1,4 +1,10 @@
 ﻿@model PropertyFormViewModel
+@*
+    Add/edit property modal (2.b, Technical 1.b). Same partial for both - no Id means we're adding.
+    data-modal-form tells site.js to post it with fetch. A 422 means it's this partial again with errors (redrawn in
+    the modal); JSON means it worked, so the modal closes and #property-list refreshes. The form tag helper adds the
+    antiforgery token.
+*@
 <form asp-controller="Properties" asp-action="Edit" asp-route-id="@Model.Id" method="post" data-modal-form>
     <div class="modal-header">
         <h5 class="modal-title">@(Model.Id is null ? "Add property" : "Edit property")</h5>

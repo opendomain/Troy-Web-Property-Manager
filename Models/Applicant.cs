@@ -4,9 +4,9 @@ using System.Collections.Generic;
 namespace Troy_Web_Property_Manager.Models;
 
 /// <summary>
-/// The applicant (the person), linked to their login by <see cref="UserId"/>; owns their rental applications.
-/// Name, phone, email and address are only defaults that pre-fill a new application's Applicant Information;
-/// each application keeps its own copy in <see cref="ApplicantInformation"/>.
+/// The applicant as a person, tied to their login by <see cref="UserId"/>. Their rental applications hang off this.
+/// Name, phone, email and address are just used to pre-fill a new application - each application keeps its own
+/// copy in <see cref="ApplicantInformation"/>.
 /// </summary>
 public partial class Applicant
 {
@@ -20,7 +20,7 @@ public partial class Applicant
 
     public string CurrentAddress { get; set; } = null!;
 
-    /// <summary>The Identity user this applicant profile belongs to.</summary>
+    /// <summary>The Identity user this profile belongs to.</summary>
     public string? UserId { get; set; }
 
     public virtual ICollection<RentalApplication> RentalApplications { get; set; } = new List<RentalApplication>();

@@ -1,12 +1,12 @@
 namespace Troy_Web_Property_Manager.Models;
 
 /// <summary>
-/// The Applicant Information section of one rental application (name, phone, email, current address).
-/// Stored per application, so a submitted application keeps exactly what was submitted.
+/// The Applicant Information section of one application (name, phone, email, current address).
+/// Each application has its own copy, so once it's submitted it doesn't change behind our backs.
 /// </summary>
 public partial class ApplicantInformation
 {
-    /// <summary>Also the primary key: one row per application.</summary>
+    /// <summary>Doubles as the primary key, so it's one row per application.</summary>
     public int RentalApplicationId { get; set; }
 
     public string Name { get; set; } = null!;

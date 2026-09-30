@@ -1,5 +1,12 @@
 ﻿@model UnitFormViewModel
+@*
+    Add/edit unit modal (2.b, Technical 1.b): unit number, bedrooms, monthly rent, unit type.
+    Works the same way as _PropertyForm. The server builds the unit type dropdown (Model.UnitTypes): active types,
+    plus this unit's current type if it's inactive (2.c). Even if someone edits the HTML, the server won't accept an
+    inactive type for any other unit, and a duplicate unit number comes back as an error under Unit number.
+*@
 <form asp-controller="Properties" asp-action="EditUnit" asp-route-id="@Model.Id" method="post" data-modal-form>
+    @* Only matters when adding - an existing unit stays with its saved property. *@
     <input type="hidden" asp-for="PropertyId" />
     <div class="modal-header">
         <h5 class="modal-title">@(Model.Id is null ? "Add unit" : "Edit unit")</h5>

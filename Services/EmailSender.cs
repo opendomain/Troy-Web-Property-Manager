@@ -5,7 +5,12 @@ using SendGrid.Helpers.Mail;
 
 namespace Troy_Web_Property_Manager.Services
 {
-    /// <summary>Registered as a singleton so the one SendGridClient (and its HttpClient) is reused for every email.</summary>
+    /// <summary>
+    /// Identity's <see cref="IEmailSender"/>, done with SendGrid. Identity uses it to send the confirmation email when
+    /// someone registers (Program.cs turns on RequireConfirmedAccount). The API key comes from config (user secrets in
+    /// development) - never put it in the code.
+    /// It's a singleton so we reuse one SendGridClient (and its HttpClient) for every email.
+    /// </summary>
     public class EmailSender : IEmailSender
     {
         private readonly SendGridOptions _options;
@@ -21,7 +26,7 @@ namespace Troy_Web_Property_Manager.Services
 
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
-            // HTML only: the Identity messages are HTML, and sending them as the plain-text part would show raw tags.
+            // HTML only. Identity's messages are HTML, so sending them as plain text would show the raw tags.
             var msg = new SendGridMessage
             {
                 From = new EmailAddress(_options.FromEmail, _options.FromName),
@@ -30,7 +35,7 @@ namespace Troy_Web_Property_Manager.Services
             };
             msg.AddTo(new EmailAddress(email));
 
-            // SendGrid rewrites links for click tracking, which can break the confirmation token.
+            // Turn off click tracking - SendGrid rewrites the links and that can break the confirmation token.
             msg.SetClickTracking(false, false);
 
             var response = await _client.SendEmailAsync(msg);

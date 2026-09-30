@@ -6,7 +6,11 @@ using Troy_Web_Property_Manager.ViewModels;
 
 namespace Troy_Web_Property_Manager.Controllers
 {
-    /// <summary>Applicants browse available units and start an application for one.</summary>
+    /// <summary>
+    /// Applicants browse the available units here and apply for one (2.b). "Available" just means no lease covers
+    /// today (2.d) - we work that out in SQL every time instead of storing it. The Apply button posts to
+    /// <c>ApplicationsController.Start</c>. Applicants only; managers look after units on the Properties page.
+    /// </summary>
     [Authorize(Roles = AppRoles.Applicant)]
     public class UnitsController(PropertyService properties) : AppController
     {

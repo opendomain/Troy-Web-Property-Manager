@@ -3,6 +3,10 @@
     ViewData["Title"] = "Available units";
 }
 <h1>@ViewData["Title"]</h1>
+@*
+    The applicant's Available units page (2.b). Only shows units with no lease covering today (2.d), filtered in SQL.
+    The property filter is a GET form, same as on the application list.
+*@
 
 <form method="get" class="row g-2 align-items-end mb-3">
     <div class="col-sm-6 col-md-4">
@@ -44,6 +48,8 @@ else
                         <td>@unit.MonthlyRent.ToString("C0")</td>
                         <td>@unit.UnitTypeName</td>
                         <td>
+                            @* Apply is a POST since it creates an application. That way it has an antiforgery token,
+                               and a crawler or link prefetch can't create applications just by following a URL. *@
                             <form asp-controller="Applications" asp-action="Start" method="post">
                                 <input type="hidden" name="unitId" value="@unit.Id" />
                                 <button type="submit" class="btn btn-sm btn-primary">Apply</button>
