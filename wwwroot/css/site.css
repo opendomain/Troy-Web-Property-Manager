@@ -1,3 +1,36 @@
+/* ---------------------------------------------------------------------------------------------------------
+   Theme: a light blue palette on top of Bootstrap 5.3.
+   The colours are defined once here, then fed into Bootstrap's own CSS variables, so every component that uses
+   "primary" (buttons, links, pagination, focus rings, checkboxes) picks them up without extra classes in the views.
+   The blues used for text and buttons are dark enough for WCAG AA contrast (4.5:1) against white and the page
+   background; the pale ones are only used for backgrounds and borders.
+   --------------------------------------------------------------------------------------------------------- */
+:root {
+  --app-blue-50: #f4f9fe;   /* page background */
+  --app-blue-100: #e4f0fb;  /* navbar, card headers, table headers, footer */
+  --app-blue-200: #c9e1f6;  /* borders */
+  --app-blue-300: #9dc9ee;  /* input focus border */
+  --app-blue-500: #3b8ed6;  /* focus ring */
+  --app-blue-600: #2172b6;  /* primary: buttons and links */
+  --app-blue-700: #195b93;  /* hover / pressed */
+  --app-blue-900: #0f3558;  /* headings and navbar text */
+
+  --bs-primary: var(--app-blue-600);
+  --bs-primary-rgb: 33, 114, 182;
+  --bs-primary-text-emphasis: var(--app-blue-900);
+  --bs-primary-bg-subtle: var(--app-blue-100);
+  --bs-primary-border-subtle: var(--app-blue-200);
+  --bs-link-color: var(--app-blue-600);
+  --bs-link-color-rgb: 33, 114, 182;
+  --bs-link-hover-color: var(--app-blue-700);
+  --bs-link-hover-color-rgb: 25, 91, 147;
+  --bs-body-bg: var(--app-blue-50);
+  --bs-body-color: #1e2b38;
+  --bs-heading-color: var(--app-blue-900);
+  --bs-border-color: var(--app-blue-200);
+  --bs-focus-ring-color: rgba(59, 142, 214, 0.3);
+}
+
 html {
   font-size: 14px;
 }
@@ -8,8 +41,8 @@ html {
   }
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-select:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem var(--app-blue-500);
 }
 
 html {
@@ -52,4 +85,150 @@ body {
 
 .data-grid table[aria-busy="true"] tbody {
   opacity: 0.5;
+}
+
+/* ----- Components -----
+   Bootstrap compiles some colours into each component's own variables (or hard-codes them), so the :root
+   variables above don't reach them. These set the palette on each one. */
+
+.btn-primary {
+  --bs-btn-bg: var(--app-blue-600);
+  --bs-btn-border-color: var(--app-blue-600);
+  --bs-btn-hover-bg: var(--app-blue-700);
+  --bs-btn-hover-border-color: var(--app-blue-700);
+  --bs-btn-active-bg: var(--app-blue-700);
+  --bs-btn-active-border-color: var(--app-blue-700);
+  --bs-btn-disabled-bg: var(--app-blue-600);
+  --bs-btn-disabled-border-color: var(--app-blue-600);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--app-blue-600);
+  --bs-btn-border-color: var(--app-blue-600);
+  --bs-btn-hover-bg: var(--app-blue-600);
+  --bs-btn-hover-border-color: var(--app-blue-600);
+  --bs-btn-active-bg: var(--app-blue-700);
+  --bs-btn-active-border-color: var(--app-blue-700);
+  --bs-btn-disabled-color: var(--app-blue-600);
+  --bs-btn-disabled-border-color: var(--app-blue-600);
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: var(--app-blue-300);
+}
+
+.form-check-input:checked {
+  background-color: var(--app-blue-600);
+  border-color: var(--app-blue-600);
+}
+
+.pagination {
+  --bs-pagination-active-bg: var(--app-blue-600);
+  --bs-pagination-active-border-color: var(--app-blue-600);
+  --bs-pagination-hover-bg: var(--app-blue-100);
+  --bs-pagination-focus-bg: var(--app-blue-100);
+}
+
+h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* White "surfaces" on the pale blue page: cards, tables and modals. */
+.card {
+  --bs-card-border-color: var(--app-blue-200);
+  --bs-card-cap-bg: var(--app-blue-100);
+  --bs-card-cap-color: var(--app-blue-900);
+  --bs-card-bg: #fff;
+  box-shadow: 0 1px 3px rgba(15, 53, 88, 0.06);
+}
+
+.card-header {
+  font-weight: 600;
+}
+
+.list-group {
+  --bs-list-group-bg: #fff;
+  --bs-list-group-border-color: var(--app-blue-200);
+}
+
+.table-responsive {
+  background: #fff;
+  border: 1px solid var(--app-blue-200);
+  border-radius: var(--bs-border-radius);
+  box-shadow: 0 1px 3px rgba(15, 53, 88, 0.06);
+  margin-bottom: 1rem;
+}
+
+.table-responsive > .table {
+  margin-bottom: 0;
+}
+
+.table {
+  --bs-table-bg: #fff;
+  --bs-table-hover-bg: var(--app-blue-50);
+  --bs-table-border-color: var(--app-blue-200);
+}
+
+.table > thead th {
+  background-color: var(--app-blue-100);
+  color: var(--app-blue-900);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.modal-header {
+  background-color: var(--app-blue-100);
+  border-bottom-color: var(--app-blue-200);
+}
+
+.modal-title {
+  color: var(--app-blue-900);
+}
+
+/* ----- Navbar and footer ----- */
+
+.app-navbar {
+  background-color: var(--app-blue-100);
+  border-bottom: 1px solid var(--app-blue-200);
+}
+
+.app-navbar .navbar-brand {
+  color: var(--app-blue-900);
+  font-weight: 600;
+}
+
+.app-navbar .nav-link {
+  color: var(--app-blue-900);
+  border-radius: var(--bs-border-radius);
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.app-navbar .nav-link:hover, .app-navbar .nav-link:focus {
+  color: var(--app-blue-700);
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+/* The page you're on (the layout sets .active and aria-current). */
+.app-navbar .nav-link.active {
+  color: var(--app-blue-900);
+  background-color: #fff;
+  font-weight: 600;
+}
+
+.footer {
+  background-color: var(--app-blue-100);
+  border-top: 1px solid var(--app-blue-200);
+  color: var(--app-blue-900);
+}
+
+/* The home page's welcome panel. */
+.app-hero {
+  background: linear-gradient(180deg, #fff 0%, var(--app-blue-100) 100%);
+  border: 1px solid var(--app-blue-200);
+  border-radius: var(--bs-border-radius-lg);
+  padding: 3rem 1.5rem;
+  margin-top: 1rem;
 }

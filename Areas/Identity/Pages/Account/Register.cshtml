@@ -7,38 +7,43 @@
 
 <h1>@ViewData["Title"]</h1>
 
-<form method="post" asp-route-returnUrl="@Model.ReturnUrl">
-    <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
-    <div class="form-group">
-        <label asp-for="Input.Email">Email</label>
-        <input asp-for="Input.Email" class="form-control" autocomplete="username" />
-        <span asp-validation-for="Input.Email" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Input.Password">Password</label>
-        <input asp-for="Input.Password" class="form-control" autocomplete="new-password" />
-        <span asp-validation-for="Input.Password" class="text-danger"></span>
-    </div>
-    <div class="form-group">
-        <label asp-for="Input.ConfirmPassword">Confirm Password</label>
-        <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" />
-        <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
-    </div>
-    @* I added the role picker here. The server still checks the value against AppRoles.All. *@
-    <fieldset class="form-group mt-2">
-        <legend class="col-form-label pt-0">@Html.DisplayNameFor(m => m.Input.Role)</legend>
-        @foreach (var role in AppRoles.All)
-        {
-            var id = "role-" + role.Replace(" ", "");
-            <div class="form-check">
-                <input asp-for="Input.Role" type="radio" value="@role" id="@id" class="form-check-input" />
-                <label for="@id" class="form-check-label">@role</label>
+@* The form sits in a column so the fields aren't page-wide: full width on a phone, narrower from tablet size up. *@
+<div class="row">
+    <div class="col-md-6 col-lg-4">
+        <form method="post" asp-route-returnUrl="@Model.ReturnUrl">
+            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+            <div class="form-group">
+                <label asp-for="Input.Email">Email</label>
+                <input asp-for="Input.Email" class="form-control" autocomplete="username" />
+                <span asp-validation-for="Input.Email" class="text-danger"></span>
             </div>
-        }
-        <span asp-validation-for="Input.Role" class="text-danger"></span>
-    </fieldset>
-    <button type="submit" class="btn btn-primary">Register</button>
-</form>
+            <div class="form-group">
+                <label asp-for="Input.Password">Password</label>
+                <input asp-for="Input.Password" class="form-control" autocomplete="new-password" />
+                <span asp-validation-for="Input.Password" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Input.ConfirmPassword">Confirm Password</label>
+                <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" />
+                <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
+            </div>
+            @* I added the role picker here. The server still checks the value against AppRoles.All. *@
+            <fieldset class="form-group mt-2">
+                <legend class="col-form-label pt-0">@Html.DisplayNameFor(m => m.Input.Role)</legend>
+                @foreach (var role in AppRoles.All)
+                {
+                    var id = "role-" + role.Replace(" ", "");
+                    <div class="form-check">
+                        <input asp-for="Input.Role" type="radio" value="@role" id="@id" class="form-check-input" />
+                        <label for="@id" class="form-check-label">@role</label>
+                    </div>
+                }
+                <span asp-validation-for="Input.Role" class="text-danger"></span>
+            </fieldset>
+            <button type="submit" class="btn btn-primary">Register</button>
+        </form>
+    </div>
+</div>
 
 <div class="mt-3">
     <p><a asp-page="./Login" asp-route-returnUrl="@Model.ReturnUrl">Already have an account? Log in</a></p>
