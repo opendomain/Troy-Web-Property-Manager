@@ -14,15 +14,22 @@ namespace Troy_Web_Property_Manager.Controllers
     [Authorize(Roles = AppRoles.Applicant)]
     public class UnitsController(PropertyService properties) : AppController
     {
-        public async Task<IActionResult> Index(int? propertyId, int? bedrooms)
+        /// <summary>
+        /// The available units, filtered and sorted from the query string. An unknown <paramref name="sort"/> or
+        /// <paramref name="dir"/> doesn't bind, so it just falls back to the default (property, ascending).
+        /// </summary>
+        public async Task<IActionResult> Index(int? propertyId, int? bedrooms, UnitSortColumn? sort, SortDirection? dir)
         {
-            return View(new AvailableUnitsPageViewModel
+            var model = new AvailableUnitsPageViewModel
             {
                 PropertyId = propertyId,
                 Bedrooms = bedrooms,
-                Properties = await properties.GetPropertyOptionsAsync(propertyId),
-                Units = await properties.GetAvailableUnitsAsync(propertyId, bedrooms)
-            });
+                Sort = sort ?? UnitSortColumn.Property,
+                Dir = dir ?? SortDirection.Asc,
+                Properties = await properties.GetPropertyOptionsAsync(propertyId)
+            };
+            model.Units = await properties.GetAvailableUnitsAsync(propertyId, bedrooms, model.Sort, model.Dir);
+            return View(model);
         }
     }
 }

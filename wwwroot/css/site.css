@@ -67,7 +67,7 @@ body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-/* Data grid headers (DataGridViewComponent): the sort buttons look like the header text, not like links. */
+/* Sortable column headers (the data grid's buttons and the Units page's links) look like the header text. */
 .data-grid-sort {
   background: none;
   border: 0;
@@ -76,6 +76,7 @@ body {
   font-weight: inherit;
   color: inherit;
   text-align: inherit;
+  text-decoration: none;
   cursor: pointer;
 }
 
