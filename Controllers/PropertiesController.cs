@@ -56,8 +56,7 @@ namespace Troy_Web_Property_Manager.Controllers
             var result = await properties.DeletePropertyAsync(id);
             if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return RefreshList();
-            AddErrors(result);
-            return ModalInvalid("_Confirm", ConfirmDelete(id));
+            return ModalFailed("_Confirm", ConfirmDelete(id), result);
         }
 
         // ----- Unit -----
@@ -102,8 +101,7 @@ namespace Troy_Web_Property_Manager.Controllers
             var result = await properties.DeleteUnitAsync(id);
             if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return RefreshList();
-            AddErrors(result);
-            return ModalInvalid("_Confirm", ConfirmDeleteUnit(id));
+            return ModalFailed("_Confirm", ConfirmDeleteUnit(id), result);
         }
         /// <summary>What every modal on this page returns on success: close it and redraw just the property list.</summary>
         private IActionResult RefreshList()

@@ -226,8 +226,7 @@ namespace Troy_Web_Property_Manager.Controllers
             var result = await applications.SaveResidenceAsync(id, model, CurrentUser);
             if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
-            AddErrors(result);
-            return ModalInvalid("_ResidenceForm", model);
+            return ModalFailed("_ResidenceForm", model, result);
         }
 
         /// <summary>"Are you sure?" modal for removing a residence (uses the shared _Confirm partial).</summary>
@@ -248,8 +247,7 @@ namespace Troy_Web_Property_Manager.Controllers
             var result = await applications.DeleteResidenceAsync(id, residenceId, CurrentUser);
             if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
-            AddErrors(result);
-            return ModalInvalid("_Confirm", ConfirmDeleteResidence(id, residenceId));
+            return ModalFailed("_Confirm", ConfirmDeleteResidence(id, residenceId), result);
         }
 
         private ConfirmViewModel ConfirmDeleteResidence(int id, int residenceId)
@@ -277,8 +275,7 @@ namespace Troy_Web_Property_Manager.Controllers
                 SetMessage("Your application was withdrawn.");
                 return ModalSuccess(); // reloads the page
             }
-            AddErrors(result);
-            return ModalInvalid("_Confirm", ConfirmWithdraw(id));
+            return ModalFailed("_Confirm", ConfirmWithdraw(id), result);
         }
 
         // ---------------- Review (modal, property managers, 5.a) ----------------
@@ -313,8 +310,7 @@ namespace Troy_Web_Property_Manager.Controllers
                 });
                 return ModalSuccess(); // status, buttons and history all change, so reload the page
             }
-            AddErrors(result);
-            return ModalInvalid("_ReviewForm", model);
+            return ModalFailed("_ReviewForm", model, result);
         }
 
         private ConfirmViewModel ConfirmWithdraw(int id)
