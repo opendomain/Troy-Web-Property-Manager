@@ -1,0 +1,8 @@
+@model ApplicationEditorViewModel
+@* Summary: a read-only view of both sections, reusing the same partials (IsReadOnly is true here). *@
+@if (Model.CanEdit && !Model.CanSubmit)
+{
+    <div class="alert alert-warning">Save both sections before submitting.</div>
+}
+<partial name="_ApplicantInformation" model="Model" />
+<partial name="_ResidenceHistory" model="Model" />

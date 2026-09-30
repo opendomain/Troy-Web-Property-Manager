@@ -22,6 +22,15 @@ namespace Troy_Web_Property_Manager.Services
         {
             if (user.IsManager) return ServiceResult.Error("Only applicants can apply for a unit.");
             if (!await db.Units.AnyAsync(u => u.Id == unitId)) return ServiceResult.Missing();
+
+            // Applying again for the same unit reopens the user's open application instead of starting a duplicate.
+            var openId = await db.RentApplications
+                .Where(a => a.UnitId == unitId && a.Applicant.UserId == user.Id
+                    && (a.Status == (int)ApplicationStatus.Draft || a.Status == (int)ApplicationStatus.Submitted || a.Status == (int)ApplicationStatus.Returned))
+                .Select(a => (int?)a.Id)
+                .FirstOrDefaultAsync();
+            if (openId is int existing) return ServiceResult.Ok(existing);
+
             if (await UnitHasActiveLeaseAsync(unitId)) return ServiceResult.Error("This unit is not available.");
 
             // One applicant profile per user (unique index on UserId); create it on the first application.
@@ -73,6 +82,18 @@ namespace Troy_Web_Property_Manager.Services
             var canEdit = !user.IsManager && ApplicationWorkflow.IsEditable((ApplicationStatus)application.Status);
             var current = section ?? (canEdit ? ApplicationSection.Applicant : ApplicationSection.Summary);
             var info = application.Applicant;
+
+            // A returned or denied applicant needs to know why; the full history stays manager-only.
+            string? reviewComment = null;
+            if (!user.IsManager && application.Status is (int)ApplicationStatus.Returned or (int)ApplicationStatus.Denied)
+            {
+                reviewComment = await db.ApplicationStatusHistories
+                    .Where(h => h.RentalApplicationId == id && h.NewStatus == application.Status)
+                    .OrderByDescending(h => h.ChangedDate).ThenByDescending(h => h.Id)
+                    .Select(h => h.Comment)
+                    .FirstOrDefaultAsync();
+            }
+
             return new ApplicationEditorViewModel
             {
                 Id = application.Id,
@@ -100,7 +121,8 @@ namespace Troy_Web_Property_Manager.Services
                 ResidenceHistorySaved = application.ResidenceSectionSaved,
                 CanEdit = canEdit,
                 IsReadOnly = !canEdit || current == ApplicationSection.Summary,
-                IsManager = user.IsManager
+                IsManager = user.IsManager,
+                ReviewComment = string.IsNullOrWhiteSpace(reviewComment) ? null : reviewComment
             };
         }
 

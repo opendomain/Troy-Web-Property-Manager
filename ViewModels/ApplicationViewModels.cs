@@ -54,6 +54,9 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public bool CanEdit { get; set; } // server-side decision
         [BindNever] public bool IsReadOnly { get; set; } // !CanEdit, or on the Summary
         [BindNever] public bool IsManager { get; set; }
+
+        /// <summary>The reviewer's comment when the application was returned or denied, shown to the applicant.</summary>
+        [BindNever] public string? ReviewComment { get; set; }
         public bool CanSubmit => CanEdit && ApplicantSaved && ResidenceHistorySaved;
         public bool CanWithdraw => !IsManager && !ApplicationWorkflow.IsTerminal(Status);
         public bool CanReview => IsManager && ApplicationWorkflow.CanReview(Status);
