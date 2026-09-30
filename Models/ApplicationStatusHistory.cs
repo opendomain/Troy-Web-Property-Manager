@@ -11,7 +11,11 @@ public partial class ApplicationStatusHistory
 
     public int NewStatus { get; set; }
 
-    public string Comment { get; set; } = null!;
+    /// <summary>Optional for status changes; required by the review rules for Return and Deny.</summary>
+    public string? Comment { get; set; }
+
+    /// <summary>The review outcome, when this change came from a property manager's review.</summary>
+    public ReviewOutcome? Outcome { get; set; }
 
     public DateTime ChangedDate { get; set; }
 

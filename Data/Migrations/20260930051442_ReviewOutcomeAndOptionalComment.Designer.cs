@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Troy_Web_Property_Manager.Data;
 
@@ -11,9 +12,11 @@ using Troy_Web_Property_Manager.Data;
 namespace Troy_Web_Property_Manager.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260930051442_ReviewOutcomeAndOptionalComment")]
+    partial class ReviewOutcomeAndOptionalComment
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -420,6 +423,9 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<DateTime>("EndDate")
+                        .HasColumnType("datetime");
+
                     b.Property<string>("LandlordName")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -430,15 +436,12 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<DateOnly>("MoveInDate")
-                        .HasColumnType("date");
-
-                    b.Property<DateOnly>("MoveOutDate")
-                        .HasColumnType("date");
-
                     b.Property<int>("RentalApplicationId")
                         .HasColumnType("int")
                         .HasColumnName("RentalApplicationID");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime");
 
                     b.HasKey("Id");
 

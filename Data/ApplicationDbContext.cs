@@ -128,11 +128,11 @@ namespace Troy_Web_Property_Manager.Data
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.Address).HasMaxLength(50);
-                entity.Property(e => e.EndDate).HasColumnType("datetime");
+                entity.Property(e => e.MoveOutDate).HasColumnType("date");
                 entity.Property(e => e.LandlordName).HasMaxLength(50);
                 entity.Property(e => e.LandlordPhone).HasMaxLength(50);
                 entity.Property(e => e.RentalApplicationId).HasColumnName("RentalApplicationID");
-                entity.Property(e => e.StartDate).HasColumnType("datetime");
+                entity.Property(e => e.MoveInDate).HasColumnType("date");
 
                 entity.HasOne(d => d.RentalApplication).WithMany(p => p.Residences)
                     .HasForeignKey(d => d.RentalApplicationId)
