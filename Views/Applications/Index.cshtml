@@ -1,0 +1,8 @@
+@model CurrentUser
+@{
+    ViewData["Title"] = Model.IsManager ? "Applications" : "My applications";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<p class="text-muted">Applications will be listed here.</p>

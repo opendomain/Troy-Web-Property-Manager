@@ -2,7 +2,7 @@
 //
 // - Any element with data-modal-url loads that URL (a partial view) into the shared #app-modal.
 // - A form inside the modal with data-modal-form is posted with fetch:
-//     * HTML response  -> validation failed; the partial is re-rendered in place.
+//     * HTML response (200 or 422) -> validation failed; the partial is re-rendered in place.
 //     * JSON response  -> { success, refreshTarget, refreshUrl }: close the modal, then reload
 //                         refreshTarget from refreshUrl, or the whole page when no target is given.
 // - Buttons with data-confirm ask before submitting.
@@ -58,9 +58,27 @@
         }
     }
 
+    // For AJAX requests the cookie auth handler returns 401 (signed out) or 403 (wrong role) instead of
+    // redirecting. A signed-out user gets a full page load so they land on the login page with a return URL,
+    // rather than seeing the login page inside the modal. Returns true when the response was handled here.
+    function handleAuthFailure(response) {
+        if (response.status === 401 || response.redirected) {
+            window.location.reload();
+            return true;
+        }
+        if (response.status === 403) {
+            showContent(errorHtml("You don't have permission to do that."));
+            return true;
+        }
+        return false;
+    }
+
     async function load(url) {
         try {
             const response = await fetch(url, { headers: ajaxHeaders });
+            if (handleAuthFailure(response)) {
+                return;
+            }
             showContent(response.ok ? await response.text() : errorHtml('That item could not be loaded. It may have been removed.'));
         } catch {
             showContent(errorHtml('Could not reach the server. Please try again.'));
@@ -74,7 +92,7 @@
             return;
         }
         const response = await fetch(result.refreshUrl, { headers: ajaxHeaders });
-        if (response.ok) {
+        if (response.ok && !response.redirected) {
             target.innerHTML = await response.text();
         } else {
             window.location.reload();
@@ -113,12 +131,16 @@
         submitButtons.forEach((b) => { b.disabled = true; });
         try {
             const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: ajaxHeaders });
+            if (handleAuthFailure(response)) {
+                return;
+            }
             const type = response.headers.get('content-type') || '';
             if (response.ok && type.includes('application/json')) {
                 const result = await response.json();
                 modal.hide();
                 await refresh(result);
-            } else if (response.ok) {
+            } else if ((response.ok || response.status === 422) && type.includes('text/html')) {
+                // 422 = validation failed (AppController.ModalInvalid): re-render the same partial with its errors.
                 showContent(await response.text());
             } else {
                 showContent(errorHtml('Something went wrong. Please close this dialog and try again.'));

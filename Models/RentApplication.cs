@@ -13,7 +13,14 @@ public partial class RentApplication
 
     public DateTime Created { get; set; }
 
-    public DateTime Submitted { get; set; }
+    /// <summary>Null while the application is a draft.</summary>
+    public DateTime? Submitted { get; set; }
+
+    /// <summary>Set when the Applicant Information section has been saved as valid.</summary>
+    public bool ApplicantSectionSaved { get; set; }
+
+    /// <summary>Set when the Residence History section has been saved as valid.</summary>
+    public bool ResidenceSectionSaved { get; set; }
 
     public int ApplicantId { get; set; }
 
