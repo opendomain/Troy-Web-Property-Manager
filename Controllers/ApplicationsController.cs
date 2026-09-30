@@ -189,6 +189,37 @@ namespace Troy_Web_Property_Manager.Controllers
             return ModalInvalid("_Confirm", ConfirmWithdraw(id));
         }
 
+        // ---------------- Review (modal, property manager) ----------------
+
+        [Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> Review(int id)
+        {
+            if (!await applications.CanReviewAsync(id, CurrentUser)) return NotFound();
+            return PartialView("_ReviewForm", new ReviewViewModel { ApplicationId = id });
+        }
+
+        [HttpPost, Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> Review(int id, ReviewViewModel model)
+        {
+            model.ApplicationId = id;
+            if (!ModelState.IsValid) return ModalInvalid("_ReviewForm", model); // e.g. Deny without a comment
+
+            var result = await applications.ReviewAsync(id, model, CurrentUser);
+            if (result.NotFound) return NotFound();
+            if (result.Succeeded)
+            {
+                SetMessage(model.Outcome switch
+                {
+                    ReviewOutcome.Approve => "Application approved; a 12-month lease was created.",
+                    ReviewOutcome.Return => "Application returned to the applicant.",
+                    _ => "Application denied."
+                });
+                return ModalSuccess(); // status, buttons and history all change, so reload the page
+            }
+            AddErrors(result);
+            return ModalInvalid("_ReviewForm", model);
+        }
+
         private ConfirmViewModel ConfirmWithdraw(int id) =>
             new("Withdraw application", "Withdraw this application? This can't be undone.", Url.Action(nameof(Withdraw), new { id })!, "Withdraw");
     }

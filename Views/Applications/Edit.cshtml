@@ -12,12 +12,10 @@
         {
             <button type="button" class="btn btn-outline-danger" data-modal-url="@Url.Action("Withdraw", new { id = Model.Id })">Withdraw</button>
         }
-        @* Step 13 adds the Review action and modal; restore this button then:
         @if (Model.CanReview)
         {
             <button type="button" class="btn btn-primary" data-modal-url="@Url.Action("Review", new { id = Model.Id })">Review</button>
         }
-        *@
     </div>
 </div>
 
@@ -86,8 +84,7 @@
     @if (Model.IsManager)
     {
         <div class="col-lg-4">
-            @* Step 13 adds the ApplicationHistory view component that renders here:
-               <vc:application-history application-id="Model.Id" /> *@
+            <vc:application-history application-id="Model.Id" />
         </div>
     }
 </div>

@@ -231,12 +231,44 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         // ---------------- Property manager ----------------
+        /// <summary>True when the application exists and is waiting for review. Reads only the status.</summary>
+        public async Task<bool> CanReviewAsync(int id, CurrentUser user)
+        {
+            if (!user.IsManager) return false;
+            var status = await db.RentApplications.Where(a => a.Id == id).Select(a => (int?)a.Status).FirstOrDefaultAsync();
+            return status is int s && ApplicationWorkflow.CanReview((ApplicationStatus)s);
+        }
+
         public async Task<ServiceResult> ReviewAsync(int id, ReviewViewModel model, CurrentUser user)
         {
             if (!user.IsManager) return ServiceResult.Error("Only property managers can review applications.");
 
+            try
+            {
+                return await ReviewInTransactionAsync(id, model, user);
+            }
+            catch (Exception ex) when (IsDeadlock(ex))
+            {
+                // Another review touching the same unit or application won the race; this one was rolled back.
+                db.ChangeTracker.Clear();
+                return ServiceResult.Error("Another review of this unit was saved at the same time. Reload the page and try again.");
+            }
+        }
+
+        /// <summary>SQL Server error 1205: chosen as the deadlock victim. EF may wrap it in a DbUpdateException.</summary>
+        private static bool IsDeadlock(Exception ex)
+        {
+            for (Exception? e = ex; e is not null; e = e.InnerException)
+            {
+                if (e is Microsoft.Data.SqlClient.SqlException { Number: 1205 }) return true;
+            }
+            return false;
+        }
+
+        private async Task<ServiceResult> ReviewInTransactionAsync(int id, ReviewViewModel model, CurrentUser user)
+        {
             // Serializable: two approvals for the same unit can't both pass the active-lease check.
-            // If they race, SQL Server rolls one back instead of letting it create a second lease.
+            // If they race, SQL Server rolls one back (a deadlock), which ReviewAsync reports to the user.
             await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
             var application = await db.RentApplications.FirstOrDefaultAsync(a => a.Id == id);
