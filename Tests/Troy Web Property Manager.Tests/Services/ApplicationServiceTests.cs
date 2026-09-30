@@ -91,10 +91,18 @@ namespace Troy_Web_Property_Manager.Tests.Services
             return id;
         }
 
+        /// <summary>Submitted and then claimed from the review queue, so <paramref name="manager"/> can review it.</summary>
+        private async Task<int> ClaimedAsync(CurrentUser? user = null, int? unitId = null, CurrentUser? manager = null)
+        {
+            var id = await SubmittedAsync(user, unitId);
+            AssertOk(await Service().ClaimAsync(id, manager ?? ManagerUser));
+            return id;
+        }
+
         /// <summary>Gives the unit an active lease by approving another applicant's application for it.</summary>
         private async Task LeaseUnitAsync(int unitId)
         {
-            var id = await SubmittedAsync(OtherApplicantUser, unitId);
+            var id = await ClaimedAsync(OtherApplicantUser, unitId);
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
         }
 
@@ -107,14 +115,20 @@ namespace Troy_Web_Property_Manager.Tests.Services
                 .SingleAsync(a => a.Id == id);
         }
 
-        /// <summary>Fakes another request changing the status after the service loaded the application but before it saves.</summary>
-        private sealed class ChangeStatusBeforeSave(int applicationId, ApplicationStatus status) : SaveChangesInterceptor
+        /// <summary>
+        /// Fakes another request changing the status after the service loaded the application but before it saves.
+        /// Pass a <paramref name="reviewer"/> with Under Review to fake another manager's claim; otherwise the claim
+        /// is cleared, the same as the app does (the check constraint insists on it).
+        /// </summary>
+        private sealed class ChangeStatusBeforeSave(int applicationId, ApplicationStatus status, string? reviewer = null) : SaveChangesInterceptor
         {
             public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
                 DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
             {
+                DateTime? claimed = reviewer is null ? null : DateTime.Now;
                 await eventData.Context!.Database.ExecuteSqlAsync(
-                    $"UPDATE RentalApplications SET Status = {(long)status} WHERE id = {applicationId}", cancellationToken);
+                    $"UPDATE RentalApplications SET Status = {(long)status}, ReviewerUser = {reviewer}, ReviewClaimed = {claimed} WHERE id = {applicationId}",
+                    cancellationToken);
                 return result;
             }
         }
@@ -242,7 +256,10 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.False(editor.CanEdit);
             Assert.True(editor.IsReadOnly);
             Assert.Equal(ApplicationSection.Summary, editor.Section);
-            Assert.True(editor.CanReview);
+            // Waiting in the queue: it has to be claimed before it can be reviewed.
+            Assert.True(editor.CanClaim);
+            Assert.False(editor.CanReview);
+            Assert.False(editor.CanRelease);
             Assert.False(editor.CanWithdraw);
         }
 
@@ -394,7 +411,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task Withdraw_Approved_IsRejected()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
 
             AssertError(await Service().WithdrawAsync(id, ApplicantUser), "can't be withdrawn");
@@ -431,13 +448,16 @@ namespace Troy_Web_Property_Manager.Tests.Services
         // ---------------- Review ----------------
 
         [Fact]
-        public async Task CanReview_OnlyManagerAndOnlySubmitted()
+        public async Task CanReview_OnlyTheManagerWhoClaimedIt()
         {
             var draft = await StartAsync(unitId: _db.SecondUnitId);
-            var submitted = await SubmittedAsync(unitId: _db.UnitId);
+            var claimed = await ClaimedAsync(unitId: _db.UnitId);
+            var waiting = await SubmittedAsync(OtherApplicantUser, _db.SecondUnitId);
 
-            Assert.True(await Service().CanReviewAsync(submitted, ManagerUser));
-            Assert.False(await Service().CanReviewAsync(submitted, ApplicantUser));
+            Assert.True(await Service().CanReviewAsync(claimed, ManagerUser));
+            Assert.False(await Service().CanReviewAsync(claimed, OtherManagerUser));
+            Assert.False(await Service().CanReviewAsync(claimed, ApplicantUser));
+            Assert.False(await Service().CanReviewAsync(waiting, ManagerUser)); // not claimed yet
             Assert.False(await Service().CanReviewAsync(draft, ManagerUser));
             Assert.False(await Service().CanReviewAsync(9999, ManagerUser));
         }
@@ -445,7 +465,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task Review_Approve_CreatesTwelveMonthLease()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
 
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
 
@@ -462,7 +482,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task Review_Approve_RemovesUnitFromAvailableUnits()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
 
             var available = await new PropertyService(_db.CreateContext()).GetAvailableUnitsAsync();
@@ -472,7 +492,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task Review_Return_ShowsCommentToApplicantAndReopensEditing()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
 
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Return, " Add a second reference. "), ManagerUser));
 
@@ -482,12 +502,18 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.True(editor.CanEdit);
             Assert.True(editor.CanSubmit); // both sections are still saved, so it can be resubmitted as is
             AssertOk(await Service().SubmitAsync(id, ApplicantUser));
+
+            // Resubmitted, it goes back in the queue unclaimed.
+            var application = await LoadAsync(id);
+            Assert.Equal((long)ApplicationStatus.Submitted, application.Status);
+            Assert.Null(application.ReviewerUser);
+            Assert.Null(application.ReviewClaimed);
         }
 
         [Fact]
         public async Task Review_Deny_ShowsCommentToApplicant()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Deny, "Income too low."), ManagerUser));
 
             var editor = await Service().GetEditorAsync(id, null, ApplicantUser);
@@ -502,19 +528,19 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [InlineData(ReviewOutcome.Deny)]
         public async Task Review_ReturnOrDenyWithoutComment_IsRejected(ReviewOutcome outcome)
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
 
             var result = await Service().ReviewAsync(id, Review(outcome, "  "), ManagerUser);
 
             AssertError(result, "comment is required");
             Assert.True(result.Errors.ContainsKey(nameof(ReviewViewModel.Comment)));
-            Assert.Equal((long)ApplicationStatus.Submitted, (await LoadAsync(id)).Status);
+            Assert.Equal((long)ApplicationStatus.UnderReview, (await LoadAsync(id)).Status);
         }
 
         [Fact]
         public async Task Review_ByApplicant_IsRejected()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
             var result = await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ApplicantUser);
             AssertError(result, "Only property managers");
             Assert.True(result.Forbidden);
@@ -524,26 +550,26 @@ namespace Troy_Web_Property_Manager.Tests.Services
         public async Task Review_Draft_IsRejected()
         {
             var id = await CompleteDraftAsync();
-            AssertError(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser), "Only submitted");
+            AssertError(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser), "Claim this application");
         }
 
         [Fact]
         public async Task Review_ApproveSecondApplicationForSameUnit_IsRejected()
         {
-            var first = await SubmittedAsync(ApplicantUser);
-            var second = await SubmittedAsync(OtherApplicantUser);
+            var first = await ClaimedAsync(ApplicantUser);
+            var second = await ClaimedAsync(OtherApplicantUser);
             AssertOk(await Service().ReviewAsync(first, Review(ReviewOutcome.Approve), ManagerUser));
 
             AssertError(await Service().ReviewAsync(second, Review(ReviewOutcome.Approve), ManagerUser), "already has an active lease");
 
             Assert.Equal(1, await _db.CreateContext().Leases.CountAsync());
-            Assert.Equal((long)ApplicationStatus.Submitted, (await LoadAsync(second)).Status);
+            Assert.Equal((long)ApplicationStatus.UnderReview, (await LoadAsync(second)).Status);
         }
 
         [Fact]
         public async Task Review_WhenWithdrawnConcurrently_CreatesNoLease()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
 
             var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Withdrawn))
                 .ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser);
@@ -551,6 +577,246 @@ namespace Troy_Web_Property_Manager.Tests.Services
             AssertError(result, "changed by someone else");
             Assert.True(result.Conflict);
             Assert.Equal(0, await _db.CreateContext().Leases.CountAsync());
+        }
+
+        // ---------------- Review queue (claim / release) ----------------
+
+        [Fact]
+        public async Task Claim_MovesItUnderReviewAndRecordsWhoClaimedIt()
+        {
+            var id = await SubmittedAsync();
+            var submittedAt = (await LoadAsync(id)).Submitted;
+
+            AssertOk(await Service().ClaimAsync(id, ManagerUser));
+
+            var application = await LoadAsync(id);
+            Assert.Equal((long)ApplicationStatus.UnderReview, application.Status);
+            Assert.Equal(ManagerUser.Id, application.ReviewerUser);
+            Assert.NotNull(application.ReviewClaimed);
+            Assert.Equal(submittedAt, application.Submitted); // still the applicant's submit time
+            Assert.Contains(application.ApplicationStatusHistories, h => h.PreviousStatus == (long)ApplicationStatus.Submitted
+                && h.NewStatus == (long)ApplicationStatus.UnderReview && h.ChangedByUser == ManagerUser.Id);
+        }
+
+        [Fact]
+        public async Task Claim_ByApplicant_IsForbidden()
+        {
+            var id = await SubmittedAsync();
+
+            var result = await Service().ClaimAsync(id, ApplicantUser);
+
+            Assert.True(result.Forbidden);
+            Assert.Equal((long)ApplicationStatus.Submitted, (await LoadAsync(id)).Status);
+        }
+
+        [Fact]
+        public async Task Claim_AlreadyClaimed_IsRejectedAndKeepsTheFirstClaim()
+        {
+            var id = await ClaimedAsync(manager: ManagerUser);
+
+            AssertError(await Service().ClaimAsync(id, OtherManagerUser), "already been claimed");
+
+            Assert.Equal(ManagerUser.Id, (await LoadAsync(id)).ReviewerUser);
+        }
+
+        [Fact]
+        public async Task Claim_OnlySubmittedApplications()
+        {
+            var draft = await StartAsync(unitId: _db.SecondUnitId);
+            var returned = await ClaimedAsync(unitId: _db.UnitId);
+            AssertOk(await Service().ReviewAsync(returned, Review(ReviewOutcome.Return, "Fix it."), ManagerUser));
+
+            Assert.True((await Service().ClaimAsync(draft, ManagerUser)).NotFound); // managers can't see unsubmitted drafts
+            AssertError(await Service().ClaimAsync(returned, ManagerUser), "Only submitted");
+            Assert.True((await Service().ClaimAsync(9999, ManagerUser)).NotFound);
+        }
+
+        [Fact]
+        public async Task Claim_WhenAnotherManagerClaimsAtTheSameTime_OnlyOneWins()
+        {
+            var id = await SubmittedAsync();
+
+            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.UnderReview, OtherManagerUser.Id))
+                .ClaimAsync(id, ManagerUser);
+
+            AssertError(result, "changed by someone else");
+            Assert.True(result.Conflict);
+            var application = await LoadAsync(id);
+            Assert.Equal(OtherManagerUser.Id, application.ReviewerUser);
+            Assert.DoesNotContain(application.ApplicationStatusHistories, h => h.NewStatus == (long)ApplicationStatus.UnderReview);
+        }
+
+        [Fact]
+        public async Task Review_ClaimedByAnotherManager_IsRejected()
+        {
+            var id = await ClaimedAsync(manager: OtherManagerUser);
+
+            AssertError(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser), "claimed by another");
+
+            Assert.Equal((long)ApplicationStatus.UnderReview, (await LoadAsync(id)).Status);
+            Assert.Equal(0, await _db.CreateContext().Leases.CountAsync());
+        }
+
+        [Fact]
+        public async Task Review_WhenReleasedAndReclaimedByAnotherManagerMeanwhile_CreatesNoLease()
+        {
+            // Still Under Review either way, so only the reviewer concurrency token can tell the claims apart.
+            var id = await ClaimedAsync(manager: ManagerUser);
+
+            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.UnderReview, OtherManagerUser.Id))
+                .ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser);
+
+            AssertError(result, "changed by someone else");
+            Assert.True(result.Conflict);
+            // (The faked claim ran inside the review's transaction, so it was rolled back with it - only the lease matters here.)
+            Assert.Equal(0, await _db.CreateContext().Leases.CountAsync());
+        }
+
+        [Fact]
+        public async Task Release_PutsItBackInTheQueueWithoutADecision()
+        {
+            var id = await ClaimedAsync();
+            var submittedAt = (await LoadAsync(id)).Submitted;
+
+            AssertOk(await Service().ReleaseAsync(id, ManagerUser));
+
+            var application = await LoadAsync(id);
+            Assert.Equal((long)ApplicationStatus.Submitted, application.Status);
+            Assert.Null(application.ReviewerUser);
+            Assert.Null(application.ReviewClaimed);
+            Assert.Equal(submittedAt, application.Submitted); // keeps its place in the queue
+            Assert.Contains(application.ApplicationStatusHistories, h => h.PreviousStatus == (long)ApplicationStatus.UnderReview
+                && h.NewStatus == (long)ApplicationStatus.Submitted && h.ChangedByUser == ManagerUser.Id && h.Outcome == null);
+            AssertOk(await Service().ClaimAsync(id, OtherManagerUser)); // and anyone can claim it again
+        }
+
+        [Fact]
+        public async Task Release_AnotherManagersClaim_Works()
+        {
+            var id = await ClaimedAsync(manager: OtherManagerUser);
+
+            AssertOk(await Service().ReleaseAsync(id, ManagerUser));
+
+            var application = await LoadAsync(id);
+            Assert.Equal((long)ApplicationStatus.Submitted, application.Status);
+            Assert.Equal(ManagerUser.Id, application.ApplicationStatusHistories.OrderBy(h => h.Id).Last().ChangedByUser);
+        }
+
+        [Fact]
+        public async Task Release_OnlyByManagersAndOnlyUnderReview()
+        {
+            var waiting = await SubmittedAsync(unitId: _db.SecondUnitId);
+            var claimed = await ClaimedAsync(OtherApplicantUser, _db.UnitId);
+
+            AssertError(await Service().ReleaseAsync(waiting, ManagerUser), "Only applications under review");
+            Assert.True((await Service().ReleaseAsync(claimed, OtherApplicantUser)).Forbidden);
+            Assert.True(await Service().CanReleaseAsync(claimed, OtherManagerUser));
+            Assert.False(await Service().CanReleaseAsync(waiting, ManagerUser));
+            Assert.False(await Service().CanReleaseAsync(claimed, OtherApplicantUser));
+            Assert.Equal((long)ApplicationStatus.UnderReview, (await LoadAsync(claimed)).Status);
+        }
+
+        [Fact]
+        public async Task Withdraw_UnderReview_SucceedsAndClearsTheClaim()
+        {
+            var id = await ClaimedAsync();
+
+            AssertOk(await Service().WithdrawAsync(id, ApplicantUser));
+
+            var application = await LoadAsync(id);
+            Assert.Equal((long)ApplicationStatus.Withdrawn, application.Status);
+            Assert.Null(application.ReviewerUser);
+            Assert.Null(application.ReviewClaimed);
+        }
+
+        [Fact]
+        public async Task Start_WhileUnderReview_ReopensTheSameApplication()
+        {
+            var id = await ClaimedAsync();
+
+            Assert.Equal(id, await StartAsync());
+        }
+
+        [Fact]
+        public async Task Editor_ShowsTheClaimToManagersOnly()
+        {
+            var id = await ClaimedAsync(manager: ManagerUser);
+
+            var mine = await Service().GetEditorAsync(id, null, ManagerUser);
+            Assert.Equal("manager-1@example.com", mine!.Reviewer);
+            Assert.NotNull(mine.ReviewClaimed);
+            Assert.True(mine.ClaimedByMe);
+            Assert.True(mine.CanReview);
+            Assert.True(mine.CanRelease);
+            Assert.False(mine.CanClaim);
+
+            var other = await Service().GetEditorAsync(id, null, OtherManagerUser);
+            Assert.Equal("manager-1@example.com", other!.Reviewer);
+            Assert.False(other.ClaimedByMe);
+            Assert.False(other.CanReview);
+            Assert.True(other.CanRelease);
+
+            // The applicant sees the status, but not who's reviewing it.
+            var applicant = await Service().GetEditorAsync(id, null, ApplicantUser);
+            Assert.Equal(ApplicationStatus.UnderReview, applicant!.Status);
+            Assert.Null(applicant.Reviewer);
+            Assert.Null(applicant.ReviewClaimed);
+            Assert.False(applicant.ClaimedByMe);
+            Assert.True(applicant.CanWithdraw);
+            Assert.False(applicant.CanEdit);
+            Assert.DoesNotContain("manager-1", System.Text.Json.JsonSerializer.Serialize(new object?[]
+            {
+                applicant,
+                await Service().ListAsync(null, null, ApplicantUser)
+            }));
+        }
+
+        [Fact]
+        public async Task Queue_SplitsMineWaitingAndOthersOldestFirst()
+        {
+            var olderWaiting = await SubmittedAsync(ApplicantUser, _db.UnitId);
+            var newerWaiting = await SubmittedAsync(ApplicantUser, _db.SecondUnitId);
+            var mine = await ClaimedAsync(OtherApplicantUser, _db.UnitId, ManagerUser);
+            var theirs = await ClaimedAsync(OtherApplicantUser, _db.SecondUnitId, OtherManagerUser);
+            var decided = await ClaimedAsync(await NewApplicantAsync("applicant-3"), _db.UnitId);
+            AssertOk(await Service().ReviewAsync(decided, Review(ReviewOutcome.Deny, "No."), ManagerUser));
+
+            var queue = await Service().GetQueueAsync(ManagerUser);
+
+            Assert.Equal(new[] { olderWaiting, newerWaiting }, queue.Waiting.Select(i => i.Id));
+            Assert.Equal(new[] { mine }, queue.Mine.Select(i => i.Id));
+            var other = Assert.Single(queue.ClaimedByOthers);
+            Assert.Equal(theirs, other.Id);
+            Assert.Equal("manager-2@example.com", other.Reviewer);
+            Assert.NotNull(other.ClaimedAt);
+            Assert.Null(queue.Waiting[0].Reviewer);
+
+            // The other manager sees the same applications from their side.
+            var theirQueue = await Service().GetQueueAsync(OtherManagerUser);
+            Assert.Equal(new[] { theirs }, theirQueue.Mine.Select(i => i.Id));
+            Assert.Equal(new[] { mine }, theirQueue.ClaimedByOthers.Select(i => i.Id));
+        }
+
+        [Fact]
+        public async Task Queue_IsEmptyForApplicants()
+        {
+            await ClaimedAsync();
+            await SubmittedAsync(OtherApplicantUser);
+
+            var queue = await Service().GetQueueAsync(ApplicantUser);
+
+            Assert.Empty(queue.Mine);
+            Assert.Empty(queue.Waiting);
+            Assert.Empty(queue.ClaimedByOthers);
+        }
+
+        /// <summary>A third applicant login, for tests that need more open applications than two applicants allow.</summary>
+        private async Task<CurrentUser> NewApplicantAsync(string id)
+        {
+            var db = _db.CreateContext();
+            db.Users.Add(new Microsoft.AspNetCore.Identity.IdentityUser { Id = id, UserName = $"{id}@example.com", Email = $"{id}@example.com" });
+            await db.SaveChangesAsync();
+            return new CurrentUser(id, IsManager: false);
         }
 
         // ---------------- Manager notes ----------------
@@ -607,7 +873,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task ManagerNotes_NeverAppearInAnythingReturnedToTheApplicant()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
             AssertOk(await Service().SaveManagerNotesAsync(id, Notes(SecretNote), ManagerUser));
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Return, "Please fix your address."), ManagerUser));
 
@@ -662,7 +928,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task ManagerNotes_StayEditableAfterADecision()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
 
             AssertOk(await Service().SaveManagerNotesAsync(id, Notes("Lease signed."), ManagerUser));
@@ -719,7 +985,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task History_RecordsEachChangeAndIsManagerOnly()
         {
-            var id = await SubmittedAsync();
+            var id = await ClaimedAsync();
             AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Deny, "Income too low."), ManagerUser));
 
             var history = await Service().GetHistoryAsync(id, ManagerUser);
@@ -728,7 +994,8 @@ namespace Troy_Web_Property_Manager.Tests.Services
             [
                 (null, ApplicationStatus.Draft),
                 (ApplicationStatus.Draft, ApplicationStatus.Submitted),
-                (ApplicationStatus.Submitted, ApplicationStatus.Denied)
+                (ApplicationStatus.Submitted, ApplicationStatus.UnderReview),
+                (ApplicationStatus.UnderReview, ApplicationStatus.Denied)
             ];
             Assert.Equal(expected, history.Select(h => (h.FromStatus, h.ToStatus)));
             Assert.Equal("manager-1@example.com", history[^1].ChangedBy);

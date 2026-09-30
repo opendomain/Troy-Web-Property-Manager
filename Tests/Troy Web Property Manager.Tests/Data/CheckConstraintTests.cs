@@ -51,6 +51,29 @@ namespace Troy_Web_Property_Manager.Tests.Data
         }
 
         [Fact]
+        public async Task Under_review_needs_a_reviewer_and_claim_time()
+        {
+            var applicationId = await StartApplicationAsync();
+            var db = _db.CreateContext();
+            var application = await db.RentalApplications.SingleAsync(a => a.Id == applicationId);
+            application.Status = (long)ApplicationStatus.UnderReview;
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+
+        [Fact]
+        public async Task Only_under_review_can_have_a_reviewer()
+        {
+            var applicationId = await StartApplicationAsync();
+            var db = _db.CreateContext();
+            var application = await db.RentalApplications.SingleAsync(a => a.Id == applicationId);
+            application.ReviewerUser = ManagerUser.Id;
+            application.ReviewClaimed = DateTime.Now;
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+
+        [Fact]
         public async Task A_lease_has_to_end_after_it_starts()
         {
             var applicationId = await StartApplicationAsync();

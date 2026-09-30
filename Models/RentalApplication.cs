@@ -11,6 +11,8 @@ namespace Troy_Web_Property_Manager.Models;
 /// <see cref="Status"/> is an EF concurrency token (set up in ApplicationDbContext). Every UPDATE adds
 /// "WHERE Status = &lt;what we read&gt;", so if two people change the status at once, one of them loses instead of
 /// silently clobbering the other.
+/// <see cref="ReviewerUser"/> is one too, so a review or release can't go through against a claim that was released
+/// and picked up by another manager in between (the status would be Under Review both times).
 /// </remarks>
 public partial class RentalApplication
 {
@@ -30,6 +32,15 @@ public partial class RentalApplication
 
     /// <summary>Set once the Residence History section has been saved and passed validation.</summary>
     public bool ResidenceHistorySaved { get; set; }
+
+    /// <summary>
+    /// Identity user id of the property manager who claimed it from the review queue. Only set while it's
+    /// Under Review, and cleared again when it's released or reviewed.
+    /// </summary>
+    public string? ReviewerUser { get; set; }
+
+    /// <summary>When <see cref="ReviewerUser"/> claimed it. Set and cleared together with it.</summary>
+    public DateTime? ReviewClaimed { get; set; }
 
     public int ApplicantId { get; set; }
 

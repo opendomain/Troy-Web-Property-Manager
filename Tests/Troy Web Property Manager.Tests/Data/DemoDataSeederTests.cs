@@ -58,6 +58,18 @@ namespace Troy_Web_Property_Manager.Tests.Data
             return application.ApplicationStatusHistories.OrderBy(h => h.ChangedDate).ThenBy(h => h.Id).ToList();
         }
 
+        /// <summary>A manager putting a claimed application back in the queue (Under Review → Submitted).</summary>
+        private static bool IsRelease(ApplicationStatusHistory change)
+        {
+            return change.PreviousStatus == (long)ApplicationStatus.UnderReview && change.NewStatus == (long)ApplicationStatus.Submitted;
+        }
+
+        /// <summary>The applicant submitting. A release also lands on Submitted, but it isn't a submission.</summary>
+        private static bool IsSubmit(ApplicationStatusHistory change)
+        {
+            return change.NewStatus == (long)ApplicationStatus.Submitted && !IsRelease(change);
+        }
+
         [Fact]
         public async Task Seed_FillsEmptyDatabaseOnlyOnce()
         {
@@ -136,18 +148,43 @@ namespace Troy_Web_Property_Manager.Tests.Data
                     Assert.True(ApplicationWorkflow.CanTransition((ApplicationStatus)timeline[i].PreviousStatus, (ApplicationStatus)timeline[i].NewStatus));
                 }
 
+                string? claimedBy = null;
                 foreach (var change in timeline)
                 {
-                    if (change.Outcome is { } outcome)
+                    if (change.NewStatus == (long)ApplicationStatus.UnderReview)
                     {
-                        Assert.Equal((long)ApplicationWorkflow.StatusFor(outcome), change.NewStatus);
+                        // A claim, by a manager.
                         Assert.Contains(change.ChangedByUser, managerIds);
+                        claimedBy = change.ChangedByUser;
+                    }
+                    else if (change.Outcome is { } outcome)
+                    {
+                        // Every review comes after a claim, by the manager who claimed it.
+                        Assert.Equal((long)ApplicationStatus.UnderReview, change.PreviousStatus);
+                        Assert.Equal((long)ApplicationWorkflow.StatusFor(outcome), change.NewStatus);
+                        Assert.Equal(claimedBy, change.ChangedByUser);
                         if (ApplicationWorkflow.RequiresComment(outcome)) Assert.False(string.IsNullOrWhiteSpace(change.Comment));
+                    }
+                    else if (IsRelease(change))
+                    {
+                        Assert.Equal(claimedBy, change.ChangedByUser);
                     }
                     else
                     {
                         Assert.Equal(application.Applicant.UserId, change.ChangedByUser);
                     }
+                }
+
+                // An open claim matches the last claim in the history; anything else has no claim.
+                if (application.Status == (long)ApplicationStatus.UnderReview)
+                {
+                    Assert.Equal(claimedBy, application.ReviewerUser);
+                    Assert.Equal(timeline[^1].ChangedDate, application.ReviewClaimed);
+                }
+                else
+                {
+                    Assert.Null(application.ReviewerUser);
+                    Assert.Null(application.ReviewClaimed);
                 }
             });
         }
@@ -184,7 +221,7 @@ namespace Troy_Web_Property_Manager.Tests.Data
 
             foreach (var application in applications)
             {
-                foreach (var submit in application.ApplicationStatusHistories.Where(h => h.NewStatus == (long)ApplicationStatus.Submitted))
+                foreach (var submit in application.ApplicationStatusHistories.Where(IsSubmit))
                 {
                     Assert.DoesNotContain(leasesByUnit[application.UnitId], l => LeaseRules.IsActiveOn(l, submit.ChangedDate));
                 }
@@ -198,7 +235,7 @@ namespace Troy_Web_Property_Manager.Tests.Data
 
             Assert.All(applications, application =>
             {
-                var submits = Timeline(application).Where(h => h.NewStatus == (long)ApplicationStatus.Submitted).ToList();
+                var submits = Timeline(application).Where(IsSubmit).ToList();
                 Assert.Equal(submits.LastOrDefault()?.ChangedDate, application.Submitted);
                 if (submits.Count > 0)
                 {

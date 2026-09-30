@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Troy_Web_Property_Manager.Models
 {
     /// <summary>
@@ -16,6 +18,9 @@ namespace Troy_Web_Property_Manager.Models
         Returned = 3,
         Approved = 4,
         Denied = 5,
-        Withdrawn = 6
+        Withdrawn = 6,
+        /// <summary>A property manager has claimed it from the review queue and is working on it.</summary>
+        [Display(Name = "Under Review")]
+        UnderReview = 7
     }
 }

@@ -145,10 +145,12 @@ namespace Troy_Web_Property_Manager.Data
         /// <summary>Builds applications whose history, sections and leases all line up.</summary>
         private sealed class ApplicationGenerator(Faker f, List<IdentityUser> managers, DateTime now)
         {
+            // Every review goes through the queue: a manager claims it (Under Review) and then decides.
             private static readonly ApplicationStatus[][] ApprovedPaths =
             [
-                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.Approved],
-                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.Returned, ApplicationStatus.Submitted, ApplicationStatus.Approved]
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Approved],
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Returned,
+                    ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Approved]
             ];
 
             private static readonly ApplicationStatus[][] OtherPaths =
@@ -156,10 +158,14 @@ namespace Troy_Web_Property_Manager.Data
                 [ApplicationStatus.Draft],
                 [ApplicationStatus.Draft, ApplicationStatus.Withdrawn],
                 [ApplicationStatus.Draft, ApplicationStatus.Submitted],
-                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.Returned, ApplicationStatus.Submitted],
-                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.Returned],
-                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.Denied],
-                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.Withdrawn]
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview],
+                // Claimed, then released back to the queue without a decision.
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Submitted],
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Returned, ApplicationStatus.Submitted],
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Returned],
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Denied],
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.Withdrawn],
+                [ApplicationStatus.Draft, ApplicationStatus.Submitted, ApplicationStatus.UnderReview, ApplicationStatus.Withdrawn]
             ];
 
             private static readonly string[] ReturnComments =
@@ -215,7 +221,7 @@ namespace Troy_Web_Property_Manager.Data
                 if (isOpen && _open.Contains((applicant, unit))) return false;
 
                 var leases = _leases.GetValueOrDefault(unit) ?? [];
-                var submits = path.Zip(times).Where(s => s.First == ApplicationStatus.Submitted).Select(s => s.Second).ToList();
+                var submits = SubmitTimes(path, times);
                 if (submits.Any(t => leases.Any(l => LeasedOn(l, t)))) return false; // the app rejects submitting a leased unit
 
                 (DateTime Start, DateTime End)? lease = null;
@@ -240,6 +246,18 @@ namespace Troy_Web_Property_Manager.Data
                 return true;
             }
 
+            /// <summary>
+            /// When the applicant submitted. A release (Under Review → Submitted) also lands on Submitted, but it's a
+            /// manager putting it back in the queue, not a new submission, so it doesn't count.
+            /// </summary>
+            private static List<DateTime> SubmitTimes(ApplicationStatus[] path, List<DateTime> times)
+            {
+                return Enumerable.Range(0, path.Length)
+                    .Where(i => path[i] == ApplicationStatus.Submitted && path[i - 1] != ApplicationStatus.UnderReview)
+                    .Select(i => times[i])
+                    .ToList();
+            }
+
             private static bool LeasedOn((DateTime Start, DateTime End) lease, DateTime time)
             {
                 return lease.Start <= time.Date && time.Date < lease.End;
@@ -260,10 +278,7 @@ namespace Troy_Web_Property_Manager.Data
                     Status = (long)path[^1],
                     Created = times[0],
                     // Set on every submit, so it holds the latest one.
-                    Submitted = path.Zip(times)
-                        .Where(s => s.First == ApplicationStatus.Submitted)
-                        .Select(s => (DateTime?)s.Second)
-                        .LastOrDefault()
+                    Submitted = SubmitTimes(path, times).Select(t => (DateTime?)t).LastOrDefault()
                 };
 
                 // Anything submitted has both sections saved; a draft could be anywhere.
@@ -285,6 +300,8 @@ namespace Troy_Web_Property_Manager.Data
                     application.ResidenceHistorySaved = true;
                 }
 
+                // The manager who claimed it most recently. Claims, releases and the review that follows are all theirs.
+                string? reviewer = null;
                 for (var i = 0; i < path.Length; i++)
                 {
                     var from = i == 0 ? (ApplicationStatus?)null : path[i - 1];
@@ -293,6 +310,8 @@ namespace Troy_Web_Property_Manager.Data
                     {
                         throw new InvalidOperationException($"Demo data path has an invalid transition {previous} -> {to}.");
                     }
+
+                    if (to == ApplicationStatus.UnderReview) reviewer = f.PickRandom(managers).Id;
 
                     ReviewOutcome? outcome = to switch
                     {
@@ -313,10 +332,20 @@ namespace Troy_Web_Property_Manager.Data
                             ReviewOutcome.Approve => f.Random.Bool(0.3f) ? "Welcome aboard!" : null,
                             _ => null
                         },
-                        // Reviews are done by a property manager; everything else by the applicant.
-                        ChangedByUser = outcome is null ? applicant.UserId! : f.PickRandom(managers).Id,
+                        // Claims, releases and reviews are done by the property manager who claimed it; everything else
+                        // (submit, withdraw) by the applicant.
+                        ChangedByUser = outcome is not null || to == ApplicationStatus.UnderReview
+                            || (from == ApplicationStatus.UnderReview && to == ApplicationStatus.Submitted)
+                            ? reviewer! : applicant.UserId!,
                         ChangedDate = times[i]
                     });
+                }
+
+                // Still Under Review: record the open claim, like ApplicationService.ClaimAsync does.
+                if (path[^1] == ApplicationStatus.UnderReview)
+                {
+                    application.ReviewerUser = reviewer;
+                    application.ReviewClaimed = times[^1];
                 }
                 return application;
             }

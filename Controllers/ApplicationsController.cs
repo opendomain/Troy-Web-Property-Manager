@@ -12,7 +12,7 @@ namespace Troy_Web_Property_Manager.Controllers
     /// Rental applications: the list, the one-page editor, and the residence/withdraw/review modals.
     /// <para>
     /// Security is layered. [Authorize] on the class lets in only our two roles, and each action narrows it down
-    /// (applicants: Start, Edit POST, Residence, Withdraw; managers: Review). Not logged in? You get sent to the login
+    /// (applicants: Start, Edit POST, Residence, Withdraw; managers: Queue, Claim, Release, Review). Not logged in? You get sent to the login
     /// page. Wrong role? 403.
     /// </para>
     /// <para>
@@ -281,9 +281,64 @@ namespace Troy_Web_Property_Manager.Controllers
             return ModalFailed("_Confirm", ConfirmWithdraw(id), result);
         }
 
+        // ---------------- Review queue (property managers) ----------------
+        // A manager claims a Submitted application (it goes Under Review) before reviewing it, so two managers never
+        // work on the same one. They can release it back to the queue without a decision.
+
+        /// <summary>The queue: my claims, what's waiting (oldest first), and what other managers have claimed.</summary>
+        [Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> Queue()
+        {
+            return View(await applications.GetQueueAsync(CurrentUser));
+        }
+
+        /// <summary>
+        /// Claims a Submitted application. A plain form post from the queue or the application page; either way we
+        /// land on the application page, where the Review button is now available (or the reason it isn't).
+        /// </summary>
+        [HttpPost, Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> Claim(int id)
+        {
+            var result = await applications.ClaimAsync(id, CurrentUser);
+            if (IsAccessFailure(result)) return Failure(result);
+            if (result.Succeeded) SetMessage("You claimed this application. It's now under review.");
+            else SetError(result.Errors.Values.First()); // e.g. another manager claimed it first
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        /// <summary>"Are you sure?" modal for releasing a claim. Warns when it's someone else's claim.</summary>
+        [Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> Release(int id)
+        {
+            var model = await applications.GetEditorAsync(id, null, CurrentUser);
+            if (model?.CanRelease != true) return NotFound();
+            return PartialView("_Confirm", ConfirmRelease(id, model.ClaimedByMe ? null : model.Reviewer));
+        }
+
+        [HttpPost, ActionName(nameof(Release)), Authorize(Roles = AppRoles.PropertyManager)]
+        public async Task<IActionResult> ReleaseConfirmed(int id)
+        {
+            var result = await applications.ReleaseAsync(id, CurrentUser);
+            if (IsAccessFailure(result)) return Failure(result);
+            if (result.Succeeded)
+            {
+                SetMessage("The application was released back to the review queue.");
+                return ModalSuccess(); // reloads the page (the application or the queue)
+            }
+            return ModalFailed("_Confirm", ConfirmRelease(id, null), result);
+        }
+
+        private ConfirmViewModel ConfirmRelease(int id, string? otherReviewer)
+        {
+            var message = otherReviewer is null
+                ? "Release this application back to the review queue? Another manager can then claim it."
+                : $"This application is claimed by {otherReviewer}. Release it back to the review queue?";
+            return new("Release application", message, Url.Action(nameof(Release), new { id })!, "Release");
+        }
+
         // ---------------- Review (modal, property managers, 5.a) ----------------
 
-        /// <summary>Review form for the modal. Only works on a Submitted application.</summary>
+        /// <summary>Review form for the modal. Only works on an application this manager has claimed.</summary>
         [Authorize(Roles = AppRoles.PropertyManager)]
         public async Task<IActionResult> Review(int id)
         {

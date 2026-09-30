@@ -9,7 +9,7 @@ namespace Troy_Web_Property_Manager.Services
 {
     /// <summary>
     /// Everything you can do with a rental application: start it, edit the sections and residences, submit,
-    /// withdraw, review, see the history, and list them.
+    /// withdraw, claim and release it from the review queue, review, see the history, and list them.
     /// </summary>
     /// <remarks>
     /// <para>All the business rules from the assessment live here (or in the <c>Rules</c> classes this calls) - not in
@@ -104,7 +104,8 @@ namespace Troy_Web_Property_Manager.Services
             // Already applied for this unit? Reopen that one instead of making a duplicate.
             var openId = await db.RentalApplications
                 .Where(a => a.UnitId == unitId && a.Applicant.UserId == user.Id
-                    && (a.Status == (long)ApplicationStatus.Draft || a.Status == (long)ApplicationStatus.Submitted || a.Status == (long)ApplicationStatus.Returned))
+                    && (a.Status == (long)ApplicationStatus.Draft || a.Status == (long)ApplicationStatus.Submitted
+                        || a.Status == (long)ApplicationStatus.Returned || a.Status == (long)ApplicationStatus.UnderReview))
                 .Select(a => (int?)a.Id)
                 .FirstOrDefaultAsync();
             if (openId is int existing) return ServiceResult.Ok(existing);
@@ -198,6 +199,14 @@ namespace Troy_Web_Property_Manager.Services
                     .FirstOrDefaultAsync();
             }
 
+            // Who has it claimed, for managers only. Applicants just see "Under Review", not who's reviewing it.
+            string? reviewer = null;
+            if (user.IsManager && application.ReviewerUser is not null)
+            {
+                reviewer = await db.Users.Where(u => u.Id == application.ReviewerUser).Select(u => u.Email).FirstOrDefaultAsync()
+                    ?? "(deleted user)";
+            }
+
             return new ApplicationEditorViewModel
             {
                 Id = application.Id,
@@ -228,7 +237,10 @@ namespace Troy_Web_Property_Manager.Services
                 // The Summary is always read-only (4.a.iii). The other sections are read-only if you can't edit.
                 IsReadOnly = !canEdit || current == ApplicationSection.Summary,
                 IsManager = user.IsManager,
-                ReviewComment = string.IsNullOrWhiteSpace(reviewComment) ? null : reviewComment
+                ReviewComment = string.IsNullOrWhiteSpace(reviewComment) ? null : reviewComment,
+                Reviewer = reviewer,
+                ReviewClaimed = user.IsManager ? application.ReviewClaimed : null,
+                ClaimedByMe = user.IsManager && application.ReviewerUser == user.Id
             };
         }
 
@@ -368,12 +380,99 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         // ---------------- Property manager ----------------
-        /// <summary>True if the application exists and is waiting for review. Only reads the status.</summary>
+        /// <summary>True if this manager has the application claimed (Under Review), so it's theirs to review.</summary>
         public async Task<bool> CanReviewAsync(int id, CurrentUser user)
         {
             if (!user.IsManager) return false;
-            var status = await db.RentalApplications.Where(a => a.Id == id).Select(a => (long?)a.Status).FirstOrDefaultAsync();
-            return status is long s && ApplicationWorkflow.CanReview((ApplicationStatus)s);
+            var claim = await db.RentalApplications.Where(a => a.Id == id)
+                .Select(a => new { a.Status, a.ReviewerUser }).FirstOrDefaultAsync();
+            return claim is not null && ApplicationWorkflow.CanReview((ApplicationStatus)claim.Status) && claim.ReviewerUser == user.Id;
+        }
+
+        /// <summary>True if the application is Under Review, so a manager can release it back to the queue.</summary>
+        public async Task<bool> CanReleaseAsync(int id, CurrentUser user)
+        {
+            if (!user.IsManager) return false;
+            var status = await Visible(user).Where(a => a.Id == id).Select(a => (long?)a.Status).FirstOrDefaultAsync();
+            return status is long s && ApplicationWorkflow.CanRelease((ApplicationStatus)s);
+        }
+
+        /// <summary>
+        /// The review queue: Submitted applications waiting for someone, oldest first, plus the ones already Under
+        /// Review, split into this manager's claims and everyone else's. Managers only.
+        /// </summary>
+        public async Task<ReviewQueueViewModel> GetQueueAsync(CurrentUser user)
+        {
+            if (!user.IsManager) return new ReviewQueueViewModel();
+
+            // One query for both statuses, with a left join for the reviewer's email (same as the history panel).
+            var rows = await (
+                from a in Visible(user).AsNoTracking()
+                where a.Status == (long)ApplicationStatus.Submitted || a.Status == (long)ApplicationStatus.UnderReview
+                join u in db.Users on a.ReviewerUser equals u.Id into users
+                from u in users.DefaultIfEmpty()
+                orderby a.Submitted, a.Id
+                select new
+                {
+                    a.Status,
+                    a.ReviewerUser,
+                    Item = new ReviewQueueItemViewModel
+                    {
+                        Id = a.Id,
+                        PropertyName = a.Unit.Property.Name,
+                        UnitNumber = a.Unit.UnitNumber,
+                        Applicant = a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email,
+                        SubmittedAt = a.Submitted,
+                        Reviewer = a.ReviewerUser == null ? null : u != null ? u.Email : "(deleted user)",
+                        ClaimedAt = a.ReviewClaimed
+                    }
+                }).ToListAsync();
+
+            return new ReviewQueueViewModel
+            {
+                Mine = rows.Where(r => r.ReviewerUser == user.Id).Select(r => r.Item).ToList(),
+                Waiting = rows.Where(r => r.Status == (long)ApplicationStatus.Submitted).Select(r => r.Item).ToList(),
+                ClaimedByOthers = rows.Where(r => r.Status == (long)ApplicationStatus.UnderReview && r.ReviewerUser != user.Id)
+                    .Select(r => r.Item).ToList()
+            };
+        }
+
+        /// <summary>
+        /// Takes a Submitted application out of the review queue for this manager (Under Review), so nobody else
+        /// reviews it at the same time. If two managers claim at once, the status concurrency token lets only the
+        /// first one through; the second gets a "changed by someone else" result.
+        /// </summary>
+        public async Task<ServiceResult> ClaimAsync(int id, CurrentUser user)
+        {
+            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can claim applications.");
+            var application = await Visible(user).FirstOrDefaultAsync(a => a.Id == id);
+            if (application is null) return ServiceResult.Missing();
+            if (!ApplicationWorkflow.CanClaim((ApplicationStatus)application.Status))
+            {
+                return ServiceResult.Error(application.Status == (long)ApplicationStatus.UnderReview
+                    ? "This application has already been claimed."
+                    : "Only submitted applications can be claimed.");
+            }
+            ChangeStatus(application, ApplicationStatus.UnderReview, user);
+            return await SaveApplicationAsync();
+        }
+
+        /// <summary>
+        /// Puts an Under Review application back in the queue (Submitted) without a decision. Any manager can do this,
+        /// not just the one who claimed it, so a claim never gets stuck if that manager is away. The history row
+        /// shows who released it.
+        /// </summary>
+        public async Task<ServiceResult> ReleaseAsync(int id, CurrentUser user)
+        {
+            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can release applications.");
+            var application = await Visible(user).FirstOrDefaultAsync(a => a.Id == id);
+            if (application is null) return ServiceResult.Missing();
+            if (!ApplicationWorkflow.CanRelease((ApplicationStatus)application.Status))
+            {
+                return ServiceResult.Error("Only applications under review can be released.");
+            }
+            ChangeStatus(application, ApplicationStatus.Submitted, user);
+            return await SaveApplicationAsync();
         }
 
         /// <summary>
@@ -413,7 +512,12 @@ namespace Troy_Web_Property_Manager.Services
             if (application is null) return ServiceResult.Missing();
             if (!ApplicationWorkflow.CanReview((ApplicationStatus)application.Status))
             {
-                return ServiceResult.Error("Only submitted applications can be reviewed.");
+                return ServiceResult.Error("Claim this application from the review queue before reviewing it.");
+            }
+            // Only the manager who claimed it can finish the review.
+            if (application.ReviewerUser != user.Id)
+            {
+                return ServiceResult.Error("This application is claimed by another property manager.");
             }
             var outcome = model.Outcome!.Value;
             // Same rule as ReviewViewModel.Validate. We check it again here because the service shouldn't trust whoever called it.
@@ -625,6 +729,11 @@ namespace Troy_Web_Property_Manager.Services
         /// A move the workflow doesn't allow throws - callers check first, so if we ever hit that it's a bug, not
         /// something the user did.
         /// </summary>
+        /// <remarks>
+        /// It also keeps the review claim in step with the status: moving to Under Review records who claimed it and
+        /// when, and any move out of it (review, release, withdraw) clears both. The database's
+        /// CK_RentalApplications_ReviewClaim constraint backs that up.
+        /// </remarks>
         private static void ChangeStatus(RentalApplication application, ApplicationStatus to, CurrentUser user,
             ReviewOutcome? outcome = null, string? comment = null)
         {
@@ -633,6 +742,7 @@ namespace Troy_Web_Property_Manager.Services
             {
                 throw new InvalidOperationException($"An application can't move from {from} to {to}.");
             }
+            var now = DateTime.Now;
             application.ApplicationStatusHistories.Add(new ApplicationStatusHistory
             {
                 PreviousStatus = application.Status,
@@ -640,9 +750,12 @@ namespace Troy_Web_Property_Manager.Services
                 Outcome = outcome,
                 Comment = comment,
                 ChangedByUser = user.Id,
-                ChangedDate = DateTime.Now
+                ChangedDate = now
             });
             application.Status = (long)to;
+            var claimed = to == ApplicationStatus.UnderReview;
+            application.ReviewerUser = claimed ? user.Id : null;
+            application.ReviewClaimed = claimed ? now : null;
         }
     }
 }

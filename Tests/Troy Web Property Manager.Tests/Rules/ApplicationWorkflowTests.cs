@@ -10,10 +10,13 @@ namespace Troy_Web_Property_Manager.Tests.Rules
         [InlineData(ApplicationStatus.Draft, ApplicationStatus.Withdrawn)]
         [InlineData(ApplicationStatus.Returned, ApplicationStatus.Submitted)]
         [InlineData(ApplicationStatus.Returned, ApplicationStatus.Withdrawn)]
-        [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Approved)]
-        [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Returned)]
-        [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Denied)]
+        [InlineData(ApplicationStatus.Submitted, ApplicationStatus.UnderReview)]
         [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Withdrawn)]
+        [InlineData(ApplicationStatus.UnderReview, ApplicationStatus.Approved)]
+        [InlineData(ApplicationStatus.UnderReview, ApplicationStatus.Returned)]
+        [InlineData(ApplicationStatus.UnderReview, ApplicationStatus.Denied)]
+        [InlineData(ApplicationStatus.UnderReview, ApplicationStatus.Submitted)]
+        [InlineData(ApplicationStatus.UnderReview, ApplicationStatus.Withdrawn)]
         public void CanTransition_AllowsWorkflowTransitions(ApplicationStatus from, ApplicationStatus to)
         {
             Assert.True(ApplicationWorkflow.CanTransition(from, to));
@@ -25,6 +28,14 @@ namespace Troy_Web_Property_Manager.Tests.Rules
         [InlineData(ApplicationStatus.Returned, ApplicationStatus.Approved)]
         [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Draft)]
         [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Submitted)]
+        // Reviews have to go through a claim first.
+        [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Approved)]
+        [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Returned)]
+        [InlineData(ApplicationStatus.Submitted, ApplicationStatus.Denied)]
+        [InlineData(ApplicationStatus.Draft, ApplicationStatus.UnderReview)]
+        [InlineData(ApplicationStatus.Returned, ApplicationStatus.UnderReview)]
+        [InlineData(ApplicationStatus.UnderReview, ApplicationStatus.Draft)]
+        [InlineData(ApplicationStatus.UnderReview, ApplicationStatus.UnderReview)]
         public void CanTransition_RejectsOtherTransitions(ApplicationStatus from, ApplicationStatus to)
         {
             Assert.False(ApplicationWorkflow.CanTransition(from, to));
@@ -44,6 +55,7 @@ namespace Troy_Web_Property_Manager.Tests.Rules
         [InlineData(ApplicationStatus.Draft, true)]
         [InlineData(ApplicationStatus.Returned, true)]
         [InlineData(ApplicationStatus.Submitted, false)]
+        [InlineData(ApplicationStatus.UnderReview, false)]
         [InlineData(ApplicationStatus.Approved, false)]
         [InlineData(ApplicationStatus.Denied, false)]
         [InlineData(ApplicationStatus.Withdrawn, false)]
@@ -53,9 +65,27 @@ namespace Troy_Web_Property_Manager.Tests.Rules
         }
 
         [Fact]
-        public void CanReview_OnlySubmitted()
+        public void CanReview_OnlyUnderReview()
         {
-            Assert.Equal(new[] { ApplicationStatus.Submitted }, Enum.GetValues<ApplicationStatus>().Where(ApplicationWorkflow.CanReview));
+            Assert.Equal(new[] { ApplicationStatus.UnderReview }, Enum.GetValues<ApplicationStatus>().Where(ApplicationWorkflow.CanReview));
+        }
+
+        [Fact]
+        public void CanClaim_OnlySubmitted()
+        {
+            Assert.Equal(new[] { ApplicationStatus.Submitted }, Enum.GetValues<ApplicationStatus>().Where(ApplicationWorkflow.CanClaim));
+        }
+
+        [Fact]
+        public void CanRelease_OnlyUnderReview()
+        {
+            Assert.Equal(new[] { ApplicationStatus.UnderReview }, Enum.GetValues<ApplicationStatus>().Where(ApplicationWorkflow.CanRelease));
+        }
+
+        [Fact]
+        public void UnderReview_IsNotTerminal()
+        {
+            Assert.False(ApplicationWorkflow.IsTerminal(ApplicationStatus.UnderReview));
         }
 
         [Theory]

@@ -49,7 +49,8 @@ namespace Troy_Web_Property_Manager.ViewModels
     /// </para>
     ///
     /// <para>
-    /// <see cref="CanSubmit"/>, <see cref="CanWithdraw"/> and <see cref="CanReview"/> are calculated from the saved
+    /// <see cref="CanSubmit"/>, <see cref="CanWithdraw"/>, <see cref="CanReview"/>, <see cref="CanClaim"/> and
+    /// <see cref="CanRelease"/> are calculated from the saved
     /// flags and the workflow rules (<see cref="ApplicationWorkflow"/>) rather than set separately, so the buttons
     /// always match what the service will actually allow. They're get-only, so model binding can't touch them.
     /// </para>
@@ -119,6 +120,18 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public List<string> SubmitBlockers { get; set; } = [];
 
         /// <summary>
+        /// Email of the property manager who has it claimed (Under Review). Managers only - always null for
+        /// applicants, who just see the status.
+        /// </summary>
+        [BindNever] public string? Reviewer { get; set; }
+
+        /// <summary>When it was claimed. Managers only, like <see cref="Reviewer"/>.</summary>
+        [BindNever] public DateTime? ReviewClaimed { get; set; }
+
+        /// <summary>True when the signed-in manager is the one who claimed it.</summary>
+        [BindNever] public bool ClaimedByMe { get; set; }
+
+        /// <summary>
         /// You can only submit once nothing is blocking it (4.b.ii, 4.e). Edit.cshtml greys out the button when this is
         /// false, and <c>ApplicationService.SubmitAsync</c> checks the same list on the server.
         /// </summary>
@@ -137,12 +150,27 @@ namespace Troy_Web_Property_Manager.ViewModels
         }
 
         /// <summary>
-        /// Managers can only review a Submitted application (5.a). Controls the Review button - the controller and
-        /// service check the same rule before opening the modal or saving the review.
+        /// Managers can only review an application they've claimed (5.a). Controls the Review button - the controller
+        /// and service check the same rule before opening the modal or saving the review.
         /// </summary>
         public bool CanReview
         {
-            get { return IsManager && ApplicationWorkflow.CanReview(Status); }
+            get { return IsManager && ClaimedByMe && ApplicationWorkflow.CanReview(Status); }
+        }
+
+        /// <summary>A Submitted application is waiting in the review queue, so any manager can claim it.</summary>
+        public bool CanClaim
+        {
+            get { return IsManager && ApplicationWorkflow.CanClaim(Status); }
+        }
+
+        /// <summary>
+        /// Any manager can release an Under Review application back to the queue - the one who claimed it, or someone
+        /// else if that manager isn't around to finish it.
+        /// </summary>
+        public bool CanRelease
+        {
+            get { return IsManager && ApplicationWorkflow.CanRelease(Status); }
         }
     }
 }
