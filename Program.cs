@@ -87,8 +87,12 @@ namespace Troy_Web_Property_Manager
                 //dbContext.Database.EnsureCreated();
 
                 AddRequiredDataToDatabase(scope);
-                // TODO: Use Bogus?
-                SeedData(dbContext);
+
+                // Demo accounts share a known password, so demo data is never seeded outside Development.
+                if (app.Environment.IsDevelopment())
+                {
+                    SeedData(scope, app.Logger);
+                }
             }
         }
 
@@ -150,9 +154,19 @@ namespace Troy_Web_Property_Manager
             }
         }
 
-        private static void SeedData(ApplicationDbContext dbContext)
+        private static void SeedData(IServiceScope scope, ILogger logger)
         {
-            //throw new NotImplementedException();
+            // Only fills an empty database (no properties yet), so existing data is never touched.
+            var seeded = DemoDataSeeder.SeedAsync(
+                    scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
+                    scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>())
+                .GetAwaiter().GetResult();
+
+            if (seeded)
+            {
+                logger.LogInformation("Seeded demo data. Sign in as manager1@example.com or applicant1@example.com with password {Password}.",
+                    DemoDataSeeder.Password);
+            }
         }
     }
 }
