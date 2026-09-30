@@ -40,6 +40,18 @@ namespace Troy_Web_Property_Manager.Controllers
             return result;
         }
 
+        /// <summary>
+        /// The service said no, so show its errors in the same partial. A conflict (someone else changed the data) goes
+        /// back as 409 so site.js can tell it apart from a plain validation failure (422).
+        /// </summary>
+        protected IActionResult ModalFailed(string partialName, object model, ServiceResult result)
+        {
+            AddErrors(result);
+            var response = PartialView(partialName, model);
+            response.StatusCode = result.Conflict ? StatusCodes.Status409Conflict : StatusCodes.Status422UnprocessableEntity;
+            return response;
+        }
+
         /// <summary>Green message that _Layout shows on the next page.</summary>
         protected void SetMessage(string message)
         {
@@ -50,6 +62,18 @@ namespace Troy_Web_Property_Manager.Controllers
         protected void SetError(string error)
         {
             TempData["Error"] = error;
+        }
+
+        /// <summary>True if the result is a 404 or 403 rather than something to show on the form.</summary>
+        protected static bool IsAccessFailure(ServiceResult result)
+        {
+            return result.NotFound || result.Forbidden;
+        }
+
+        /// <summary>Turns a not-found or forbidden result into the matching 404 / 403 response.</summary>
+        protected IActionResult Failure(ServiceResult result)
+        {
+            return result.Forbidden ? Forbid() : NotFound();
         }
 
         /// <summary>

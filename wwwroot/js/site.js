@@ -2,7 +2,8 @@
 //
 // - Any element with data-modal-url loads that URL (a partial view) into the shared #app-modal.
 // - A form inside the modal with data-modal-form is posted with fetch:
-//     * HTML response (200 or 422) -> validation failed; the partial is re-rendered in place.
+//     * HTML response (200, 422 or 409) -> validation failed, or someone else changed the data first;
+//                         the partial is re-rendered in place with the message.
 //     * JSON response  -> { success, refreshTarget, refreshUrl }: close the modal, then reload
 //                         refreshTarget from refreshUrl, or the whole page when no target is given.
 // - Buttons with data-confirm ask before submitting.
@@ -19,7 +20,9 @@
 //     data-modal-url="..." on a button     -> GET that URL and show the partial in the modal
 //     data-modal-form on a <form>           -> post it with fetch and deal with the response (below)
 // - The status code tells us what happened: JSON = worked, 422 + HTML = same partial with errors,
-//   401/403 = auth problem, anything else = something went wrong. See AppController.ModalSuccess / ModalInvalid.
+//   409 + HTML = same partial, but someone else changed the data (the message says to reload),
+//   401/403 = auth problem, anything else = something went wrong. See AppController.ModalSuccess / ModalInvalid /
+//   ModalFailed.
 // - We post the form as FormData, which includes the hidden antiforgery token, so the server's global filter checks
 //   these like any other post. Server HTML goes in as-is since it's our own (already encoded) Razor output; any
 //   error text we build here uses textContent.
@@ -166,7 +169,8 @@
         const submitButtons = form.querySelectorAll('[type=submit]');
         submitButtons.forEach((b) => { b.disabled = true; });
         try {
-            const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: ajaxHeaders });
+            // Passing the submitter means the clicked button's name/value gets posted too, like a normal form post.
+            const response = await fetch(form.action, { method: 'POST', body: new FormData(form, event.submitter), headers: ajaxHeaders });
             if (handleAuthFailure(response)) {
                 return;
             }
@@ -175,8 +179,9 @@
                 const result = await response.json();
                 modal.hide();
                 await refresh(result);
-            } else if ((response.ok || response.status === 422) && type.includes('text/html')) {
-                // 422 means it didn't validate (AppController.ModalInvalid) - redraw the partial with the errors.
+            } else if ((response.ok || response.status === 422 || response.status === 409) && type.includes('text/html')) {
+                // 422 means it didn't validate (AppController.ModalInvalid); 409 means someone else got there first
+                // (AppController.ModalFailed). Either way, redraw the partial - it has the message in it.
                 showContent(await response.text());
             } else {
                 showContent(errorHtml('Something went wrong. Please close this dialog and try again.'));

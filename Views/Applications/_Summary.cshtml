@@ -6,10 +6,18 @@
     sets IsReadOnly = true here, which makes both partials read-only. The Submit button lives in Edit.cshtml, inside
     the one form.
 *@
-@* Tell the applicant why Submit is greyed out (4.b.ii - both sections have to be saved first). *@
-@if (Model.CanEdit && !Model.CanSubmit)
+@* Tell the applicant exactly why Submit is greyed out. It's the same list SubmitAsync checks (SubmissionRules). *@
+@if (Model.CanEdit && Model.SubmitBlockers.Count > 0)
 {
-    <div class="alert alert-warning">Save both sections before submitting.</div>
+    <div class="alert alert-warning" role="status">
+        <strong>Before you can submit:</strong>
+        <ul class="mb-0">
+            @foreach (var blocker in Model.SubmitBlockers)
+            {
+                <li>@blocker</li>
+            }
+        </ul>
+    </div>
 }
 <partial name="_ApplicantInformation" model="Model" />
 <partial name="_ResidenceHistory" model="Model" />

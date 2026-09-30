@@ -14,7 +14,9 @@ namespace Troy_Web_Property_Manager.Controllers
     /// An applicant who guesses a URL just gets a 403.</para>
     /// <para>Each form works the same way (Technical 1.b): the GET returns a partial for the modal, and the POST
     /// returns either that same partial with a 422 (didn't validate, redraw it) or JSON (worked - close the modal and
-    /// reload <c>#property-list</c> from <see cref="List"/>). We only redraw the list, not the whole page.</para>
+    /// redraw part of the page). Editing a property or any of its units only redraws that property's card
+    /// (<c>#property-{id}</c> from <see cref="Card"/>); adding or removing a property redraws the whole list
+    /// (<c>#property-list</c> from <see cref="List"/>).</para>
     /// </remarks>
     [Authorize(Roles = AppRoles.PropertyManager)]
     public class PropertiesController(PropertyService properties) : AppController
@@ -29,6 +31,13 @@ namespace Troy_Web_Property_Manager.Controllers
             return PartialView("_PropertyList", await
             properties.GetPropertiesAsync());
         }
+
+        /// <summary>Just one property's card, for refreshing it after a property or unit edit.</summary>
+        public async Task<IActionResult> Card(int id)
+        {
+            var property = await properties.GetPropertyAsync(id);
+            return property is null ? NotFound() : PartialView("_PropertyCard", property);
+        }
         // ----- Property: same form for add (no id) and edit (id) -----
         public async Task<IActionResult> Edit(int? id)
         {
@@ -42,7 +51,9 @@ namespace Troy_Web_Property_Manager.Controllers
             // Didn't validate - send the partial back with the errors (422) and the modal stays open.
             if (!ModelState.IsValid) return ModalInvalid("_PropertyForm", model);
             var result = await properties.SavePropertyAsync(model);
-            return result.NotFound ? NotFound() : RefreshList();
+            if (IsAccessFailure(result)) return Failure(result);
+            // A new property needs a new card in the list; an edit only changes its own card.
+            return model.Id is null ? RefreshList() : RefreshCard(result.Id);
         }
 
         public IActionResult Delete(int id)
@@ -54,10 +65,9 @@ namespace Troy_Web_Property_Manager.Controllers
         {
             // The service won't delete it if any unit has applications (we keep those), and the modal says why.
             var result = await properties.DeletePropertyAsync(id);
-            if (result.NotFound) return NotFound();
+            if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return RefreshList();
-            AddErrors(result);
-            return ModalInvalid("_Confirm", ConfirmDelete(id));
+            return ModalFailed("_Confirm", ConfirmDelete(id), result);
         }
 
         // ----- Unit -----
@@ -75,19 +85,22 @@ namespace Troy_Web_Property_Manager.Controllers
         [HttpPost]
         public async Task<IActionResult> EditUnit(UnitFormViewModel model)
         {
+            // Look the unit up as saved - its property (for the card refresh) and type (for the dropdown) come from
+            // here, never from the post.
+            var stored = model.Id is null ? null : await properties.GetUnitFormAsync(model.Id.Value);
             if (ModelState.IsValid)
             {
                 // The service handles the rules that need the database: unit numbers are unique per property, and
                 // you can't pick an inactive type (2.c says to enforce that on the server).
                 var result = await properties.SaveUnitAsync(model);
-                if (result.NotFound) return NotFound();
-                if (result.Succeeded) return RefreshList();
+                if (IsAccessFailure(result)) return Failure(result);
+                // For a new unit the service has already checked the posted property exists.
+                if (result.Succeeded) return RefreshCard(stored?.PropertyId ?? model.PropertyId);
                 AddErrors(result);
             }
 
             // Rebuild the dropdown from the unit's saved type, not what was posted.
             // Otherwise a tampered post could sneak an inactive type into the list.
-            var stored = model.Id is null ? null : await properties.GetUnitFormAsync(model.Id.Value);
             model.UnitTypes = await properties.GetUnitTypeOptionsAsync(stored?.UnitTypeId);
             return ModalInvalid("_UnitForm", model);
         }
@@ -99,16 +112,23 @@ namespace Troy_Web_Property_Manager.Controllers
         [HttpPost, ActionName(nameof(DeleteUnit))]
         public async Task<IActionResult> DeleteUnitConfirmed(int id)
         {
+            // Grab the property before the unit is gone, so we know which card to redraw.
+            var stored = await properties.GetUnitFormAsync(id);
             var result = await properties.DeleteUnitAsync(id);
-            if (result.NotFound) return NotFound();
-            if (result.Succeeded) return RefreshList();
-            AddErrors(result);
-            return ModalInvalid("_Confirm", ConfirmDeleteUnit(id));
+            if (IsAccessFailure(result)) return Failure(result);
+            if (result.Succeeded) return RefreshCard(stored!.PropertyId);
+            return ModalFailed("_Confirm", ConfirmDeleteUnit(id), result);
         }
-        /// <summary>What every modal on this page returns on success: close it and redraw just the property list.</summary>
+        /// <summary>Close the modal and redraw the whole property list (a property was added or removed).</summary>
         private IActionResult RefreshList()
         {
             return ModalSuccess("#property-list", Url.Action(nameof(List)));
+        }
+
+        /// <summary>Close the modal and redraw just one property's card. The id matches the one in _PropertyCard.</summary>
+        private IActionResult RefreshCard(int propertyId)
+        {
+            return ModalSuccess($"#property-{propertyId}", Url.Action(nameof(Card), new { id = propertyId }));
         }
         private ConfirmViewModel ConfirmDelete(int id)
         {

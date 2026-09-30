@@ -113,12 +113,18 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public string? ReviewComment { get; set; }
 
         /// <summary>
-        /// You can only submit once both sections are saved (4.b.ii). Edit.cshtml greys out the button when this is
-        /// false, and <c>ApplicationService.SubmitAsync</c> enforces the same thing on the server.
+        /// Everything stopping Submit right now, from <see cref="SubmissionRules"/> (sections not saved, unit leased).
+        /// The Summary lists these. Empty for anyone who can't edit.
+        /// </summary>
+        [BindNever] public List<string> SubmitBlockers { get; set; } = [];
+
+        /// <summary>
+        /// You can only submit once nothing is blocking it (4.b.ii, 4.e). Edit.cshtml greys out the button when this is
+        /// false, and <c>ApplicationService.SubmitAsync</c> checks the same list on the server.
         /// </summary>
         public bool CanSubmit
         {
-            get { return CanEdit && ApplicantInformationSaved && ResidenceHistorySaved; }
+            get { return CanEdit && SubmitBlockers.Count == 0; }
         }
 
         /// <summary>

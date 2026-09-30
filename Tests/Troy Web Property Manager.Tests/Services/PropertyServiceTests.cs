@@ -207,6 +207,16 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task GetProperty_ReturnsOneCardWithItsUnits()
+        {
+            var property = await Service().GetPropertyAsync(_db.PropertyId);
+
+            Assert.NotNull(property);
+            Assert.Equal(new[] { "101", "102" }, property.Units.Select(u => u.UnitNumber));
+            Assert.Null(await Service().GetPropertyAsync(9999));
+        }
+
+        [Fact]
         public async Task AvailableUnits_FiltersByProperty()
         {
             Assert.Equal(2, (await Service().GetAvailableUnitsAsync(_db.PropertyId)).Count);

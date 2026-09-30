@@ -1,45 +1,11 @@
 @model List<PropertyViewModel>
 @* What goes inside #property-list in Index.cshtml. site.js swaps this in after a save. *@
 @*
-    One card per property, with its units. Index.cshtml renders it on first load, and PropertiesController.List
-    returns it on its own so a modal save can refresh just this bit. Using the same partial for both means the
-    refreshed version always looks exactly like the original.
+    One card per property (each one is _PropertyCard). Index.cshtml renders this on first load, and
+    PropertiesController.List returns it on its own after a property is added or removed. Edits to a single
+    property or its units only redraw that one card.
 *@
 @foreach (var property in Model)
 {
-    <div class="card mb-3">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <div><strong>@property.Name</strong> · <span class="text-muted">@property.Address</span></div>
-            <div>
-                <button type="button" class="btn btn-sm btn-outline-secondary" data-modal-url="@Url.Action("Edit", "Properties", new { id = property.Id })">Edit</button>
-                <button type="button" class="btn btn-sm btn-outline-danger" data-modal-url="@Url.Action("Delete", "Properties", new { id = property.Id })">Remove</button>
-            </div>
-        </div>
-        <table class="table mb-0">
-            <thead>
-                <tr><th>Unit</th><th>Bedrooms</th><th>Rent</th><th>Type</th><th>Status</th><th></th></tr>
-            </thead>
-            <tbody>
-                @foreach (var unit in property.Units)
-                {
-                    <tr>
-                        <td>@unit.UnitNumber</td>
-                        <td>@unit.Bedrooms</td>
-                        <td>@unit.MonthlyRent.ToString("C0")</td>
-                        @* Inactive types still show on units that already have them. *@
-                        <td>@unit.UnitTypeName @(unit.UnitTypeIsActive ? "" : "(inactive)")</td>
-                        @* Worked out in SQL from today's lease dates (2.d) - not a stored flag. *@
-                        <td>@(unit.IsLeased ? "Leased" : "Available")</td>
-                        <td class="text-end">
-                            <button type="button" class="btn btn-sm btn-link" data-modal-url="@Url.Action("EditUnit", "Properties", new { id = unit.Id })">Edit</button>
-                            <button type="button" class="btn btn-sm btn-link text-danger" data-modal-url="@Url.Action("DeleteUnit", "Properties", new { id = unit.Id })">Remove</button>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-        <div class="card-footer">
-            <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("EditUnit", "Properties", new { propertyId = property.Id })">Add unit</button>
-        </div>
-    </div>
+    <partial name="_PropertyCard" model="property" />
 }

@@ -11,9 +11,8 @@
     <h1>Properties</h1>
     <button type="button" class="btn btn-primary" data-modal-url="@Url.Action("Edit")">Add property</button>
 </div>
-@* This gets refreshed after saves - the id has to match PropertiesController's refreshTarget. *@
-@* When a modal saves, just this part gets swapped for a fresh _PropertyList from PropertiesController.List,
-   so the page doesn't reload (Technical 1.b). *@
+@* The id has to match PropertiesController.RefreshList. Adding or removing a property swaps this whole list for a
+   fresh _PropertyList; editing a property or unit only swaps that property's card (Technical 1.b). *@
 <div id="property-list">
     <partial name="_PropertyList" model="Model" />
 </div>

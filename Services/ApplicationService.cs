@@ -62,7 +62,7 @@ namespace Troy_Web_Property_Manager.Services
             catch (DbUpdateConcurrencyException)
             {
                 db.ChangeTracker.Clear();
-                return ServiceResult.Error("This application was changed by someone else. Reload the page and try again.");
+                return ServiceResult.Stale();
             }
         }
 
@@ -95,7 +95,7 @@ namespace Troy_Web_Property_Manager.Services
 
         private async Task<ServiceResult> StartOnceAsync(int unitId, CurrentUser user)
         {
-            if (user.IsManager) return ServiceResult.Error("Only applicants can apply for a unit.");
+            if (user.IsManager) return ServiceResult.Forbid("Only applicants can apply for a unit.");
             if (!await db.Units.AnyAsync(u => u.Id == unitId)) return ServiceResult.Missing();
 
             // Already applied for this unit? Reopen that one instead of making a duplicate.
@@ -171,6 +171,11 @@ namespace Troy_Web_Property_Manager.Services
             // Decided here on the server (4.d): only the applicant can edit, and only while it's Draft or Returned.
             // (Visible() already made sure an applicant only gets here for their own application.)
             var canEdit = !user.IsManager && ApplicationWorkflow.IsEditable((ApplicationStatus)application.Status);
+            // What's stopping Submit, so the Summary can list it. Only worth the lease query if they can edit.
+            var blockers = canEdit
+                ? SubmissionRules.GetBlockers(application.ApplicantInformationSaved, application.ResidenceHistorySaved,
+                    application.Residences.Count, await UnitHasActiveLeaseAsync(application.UnitId))
+                : [];
             // Editors start at section 1; everyone else lands on the read-only Summary.
             var current = section ?? (canEdit ? ApplicationSection.ApplicantInformation : ApplicationSection.Summary);
 
@@ -215,6 +220,7 @@ namespace Troy_Web_Property_Manager.Services
                 }).ToList(),
                 ApplicantInformationSaved = application.ApplicantInformationSaved,
                 ResidenceHistorySaved = application.ResidenceHistorySaved,
+                SubmitBlockers = blockers,
                 CanEdit = canEdit,
                 // The Summary is always read-only (4.a.iii). The other sections are read-only if you can't edit.
                 IsReadOnly = !canEdit || current == ApplicationSection.Summary,
@@ -323,16 +329,14 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            // 4.b.ii: both sections have to be saved first. The page disables the button too, but this is the check
-            // that actually matters.
-            if (!application!.ApplicantInformationSaved || !application.ResidenceHistorySaved || application.Residences.Count == 0)
+            // 4.b.ii / 4.e: both sections saved, and the unit not leased. The Summary shows the same list and the page
+            // disables the button, but this is the check that actually matters. We leave any other open
+            // applications for the unit alone.
+            var blockers = SubmissionRules.GetBlockers(application!.ApplicantInformationSaved, application.ResidenceHistorySaved,
+                application.Residences.Count, await UnitHasActiveLeaseAsync(application.UnitId));
+            if (blockers.Count > 0)
             {
-                return ServiceResult.Error("Save both sections before submitting.");
-            }
-            // 4.e: can't submit while the unit has an active lease. We leave any other open applications alone.
-            if (await UnitHasActiveLeaseAsync(application.UnitId))
-            {
-                return ServiceResult.Error("This unit has an active lease and is no longer available.");
+                return ServiceResult.Error(string.Join(" ", blockers));
             }
             ChangeStatus(application, ApplicationStatus.Submitted, user);
             application.Submitted = DateTime.Now;
@@ -373,7 +377,7 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         public async Task<ServiceResult> ReviewAsync(int id, ReviewViewModel model, CurrentUser user)
         {
-            if (!user.IsManager) return ServiceResult.Error("Only property managers can review applications.");
+            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can review applications.");
 
             try
             {
@@ -383,13 +387,13 @@ namespace Troy_Web_Property_Manager.Services
             {
                 // Another review on the same unit or application got there first, and this one was rolled back.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Error("Another review of this unit was saved at the same time. Reload the page and try again.");
+                return ServiceResult.Stale("Another review of this unit was saved at the same time. Reload the page and try again.");
             }
             catch (DbUpdateConcurrencyException)
             {
                 // The status changed after we read it (e.g. the applicant withdrew), so the transaction was rolled back.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Error("This application was changed by someone else. Reload the page and try again.");
+                return ServiceResult.Stale();
             }
         }
 
