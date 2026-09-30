@@ -11,7 +11,8 @@ namespace Troy_Web_Property_Manager.Tests
     /// <summary>
     /// A private in-memory SQLite database built from the real ApplicationDbContext model, so foreign keys,
     /// unique indexes and the Status concurrency token are enforced. It lives as long as the open connection.
-    /// Seeded with the status and unit type lookups, three users, one property and two units.
+    /// Always seeded with the status lookup. With sample data (the default) it also has two unit types, three users,
+    /// one property and two units; without it, it has only the lookups Program seeds, like a freshly created database.
     /// </summary>
     public sealed class TestDatabase : IDisposable
     {
@@ -28,13 +29,25 @@ namespace Troy_Web_Property_Manager.Tests
         public int ActiveUnitTypeId { get; }
         public int InactiveUnitTypeId { get; }
 
-        public TestDatabase()
+        public TestDatabase(bool withSampleData = true)
         {
             _connection.Open();
             var db = CreateContext();
             db.Database.EnsureCreated();
 
             db.Statuses.AddRange(Enum.GetValues<ApplicationStatus>().Select(s => new Status { Id = (long)s, Name = s.ToString() }));
+            if (!withSampleData)
+            {
+                // The unit types Program.SeedLookups adds.
+                db.UnitTypes.AddRange(
+                    new UnitType { Name = "Apartment", IsActive = true },
+                    new UnitType { Name = "Studio", IsActive = true },
+                    new UnitType { Name = "Townhouse", IsActive = true },
+                    new UnitType { Name = "Loft", IsActive = false });
+                db.SaveChanges();
+                return;
+            }
+
             foreach (var user in new[] { ApplicantUser, OtherApplicantUser, ManagerUser })
             {
                 db.Users.Add(new IdentityUser { Id = user.Id, UserName = $"{user.Id}@example.com", Email = $"{user.Id}@example.com" });
