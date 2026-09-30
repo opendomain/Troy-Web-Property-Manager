@@ -303,8 +303,8 @@ namespace Troy_Web_Property_Manager.Services
             residence.MoveInDate = model.MoveInDate!.Value;
             residence.MoveOutDate = model.MoveOutDate!.Value;
             if (model.ResidenceId is null) application!.Residences.Add(residence);
-            await db.SaveChangesAsync();
-            return ServiceResult.Ok();
+            GuardStatus(application!);
+            return await SaveApplicationAsync();
         }
 
         /// <summary>Removes a residence from the modal (4.c). Only while the application can still be edited.</summary>
@@ -318,6 +318,7 @@ namespace Troy_Web_Property_Manager.Services
             db.Residences.Remove(residence);
             // No residences left means the section isn't complete anymore, so Submit has to wait until it's saved again.
             if (application.Residences.Count == 0) application.ResidenceHistorySaved = false;
+            GuardStatus(application);
             return await SaveApplicationAsync();
         }
 
@@ -512,6 +513,17 @@ namespace Troy_Web_Property_Manager.Services
                 return (null, ServiceResult.Error("This application can no longer be edited."));
             }
             return (application, null);
+        }
+
+        /// <summary>
+        /// Residence changes only touch the Residence table, so on their own they'd never hit the Status concurrency
+        /// check. Marking Status as modified makes EF update the application row too - with the same value, but
+        /// "WHERE Status = &lt;what we read&gt;" - so if it was submitted or withdrawn after we loaded it (say from
+        /// another tab), the save fails instead of changing a locked application.
+        /// </summary>
+        private void GuardStatus(RentalApplication application)
+        {
+            db.Entry(application).Property(a => a.Status).IsModified = true;
         }
 
         /// <summary>

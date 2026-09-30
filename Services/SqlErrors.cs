@@ -24,6 +24,15 @@ namespace Troy_Web_Property_Manager.Services
             return HasNumber(ex, 2601, 2627);
         }
 
+        /// <summary>
+        /// Error 547: a constraint conflict. On a DELETE that means a foreign key - some other row still points at
+        /// the one we tried to remove. (547 also covers CHECK constraints, but those don't fire on a delete.)
+        /// </summary>
+        public static bool IsReferenceConflict(Exception ex)
+        {
+            return HasNumber(ex, 547);
+        }
+
         private static bool HasNumber(Exception ex, params int[] numbers)
         {
             for (Exception? e = ex; e is not null; e = e.InnerException)

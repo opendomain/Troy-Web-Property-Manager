@@ -343,6 +343,30 @@ namespace Troy_Web_Property_Manager.Tests.Services
             AssertError(await Service().SubmitAsync(id, ApplicantUser), "can no longer be edited");
         }
 
+        [Fact]
+        public async Task SaveResidence_WhenSubmittedConcurrently_IsRejected()
+        {
+            var id = await CompleteDraftAsync();
+
+            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted)).SaveResidenceAsync(id, Residence(), ApplicantUser);
+
+            Assert.True(result.Conflict);
+            Assert.Single(_db.CreateContext().Residences.Where(r => r.RentalApplicationId == id));
+        }
+
+        [Fact]
+        public async Task DeleteResidence_WhenSubmittedConcurrently_IsRejected()
+        {
+            var id = await CompleteDraftAsync();
+            AssertOk(await Service().SaveResidenceAsync(id, Residence(), ApplicantUser));
+            var residenceId = (await Service().GetEditorAsync(id, null, ApplicantUser))!.Residences.First().ResidenceId!.Value;
+
+            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted)).DeleteResidenceAsync(id, residenceId, ApplicantUser);
+
+            Assert.True(result.Conflict);
+            Assert.Equal(2, _db.CreateContext().Residences.Count(r => r.RentalApplicationId == id));
+        }
+
         // ---------------- Withdraw ----------------
 
         [Fact]

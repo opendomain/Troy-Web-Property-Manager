@@ -52,12 +52,14 @@ namespace Troy_Web_Property_Manager.Controllers
             if (!ModelState.IsValid) return ModalInvalid("_PropertyForm", model);
             var result = await properties.SavePropertyAsync(model);
             if (IsAccessFailure(result)) return Failure(result);
+            if (!result.Succeeded) return ModalFailed("_PropertyForm", model, result);
             // A new property needs a new card in the list; an edit only changes its own card.
             return model.Id is null ? RefreshList() : RefreshCard(result.Id);
         }
 
-        public IActionResult Delete(int id)
+        public async Task<IActionResult> Delete(int id)
         {
+            if (!await properties.PropertyExistsAsync(id)) return NotFound();
             return PartialView("_Confirm", ConfirmDelete(id));
         }
         [HttpPost, ActionName(nameof(Delete))]
@@ -105,8 +107,9 @@ namespace Troy_Web_Property_Manager.Controllers
             return ModalInvalid("_UnitForm", model);
         }
 
-        public IActionResult DeleteUnit(int id)
+        public async Task<IActionResult> DeleteUnit(int id)
         {
+            if (await properties.GetUnitFormAsync(id) is null) return NotFound();
             return PartialView("_Confirm", ConfirmDeleteUnit(id));
         }
         [HttpPost, ActionName(nameof(DeleteUnit))]
