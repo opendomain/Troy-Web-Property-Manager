@@ -108,8 +108,8 @@ namespace Troy_Web_Property_Manager
             // (the id column is an identity, hence IDENTITY_INSERT). Only missing rows are added.
             var existingStatusIds = dbContext.Statuses.Select(s => s.Id).ToHashSet();
             var missingStatuses = Enum.GetValues<ApplicationStatus>()
-                .Where(s => !existingStatusIds.Contains((int)s))
-                .Select(s => new Status { Id = (int)s, Name = s.ToString() })
+                .Where(s => !existingStatusIds.Contains((long)s))
+                .Select(s => new Status { Id = (long)s, Name = s.ToString() })
                 .ToList();
 
             if (missingStatuses.Count > 0)

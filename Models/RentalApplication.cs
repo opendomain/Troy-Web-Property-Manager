@@ -9,7 +9,7 @@ public partial class RentalApplication
 
     public int UnitId { get; set; }
 
-    public int Status { get; set; }
+    public long Status { get; set; }
 
     public DateTime Created { get; set; }
 

@@ -1,5 +1,4 @@
 using System.Data;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
@@ -26,7 +25,7 @@ namespace Troy_Web_Property_Manager.Services
             // Applying again for the same unit reopens the user's open application instead of starting a duplicate.
             var openId = await db.RentalApplications
                 .Where(a => a.UnitId == unitId && a.Applicant.UserId == user.Id
-                    && (a.Status == (int)ApplicationStatus.Draft || a.Status == (int)ApplicationStatus.Submitted || a.Status == (int)ApplicationStatus.Returned))
+                    && (a.Status == (long)ApplicationStatus.Draft || a.Status == (long)ApplicationStatus.Submitted || a.Status == (long)ApplicationStatus.Returned))
                 .Select(a => (int?)a.Id)
                 .FirstOrDefaultAsync();
             if (openId is int existing) return ServiceResult.Ok(existing);
@@ -53,13 +52,13 @@ namespace Troy_Web_Property_Manager.Services
             {
                 UnitId = unitId,
                 Applicant = applicant,
-                Status = (int)ApplicationStatus.Draft,
+                Status = (long)ApplicationStatus.Draft,
                 Created = DateTime.Now
             };
 
             application.ApplicationStatusHistories.Add(new ApplicationStatusHistory
             {
-                NewStatus = (int)ApplicationStatus.Draft,
+                NewStatus = (long)ApplicationStatus.Draft,
                 ChangedByUser = user.Id,
                 ChangedDate = application.Created
             });
@@ -90,7 +89,7 @@ namespace Troy_Web_Property_Manager.Services
 
             // A returned or denied applicant needs to know why; the full history stays manager-only.
             string? reviewComment = null;
-            if (!user.IsManager && application.Status is (int)ApplicationStatus.Returned or (int)ApplicationStatus.Denied)
+            if (!user.IsManager && application.Status is (long)ApplicationStatus.Returned or (long)ApplicationStatus.Denied)
             {
                 reviewComment = await db.ApplicationStatusHistories
                     .Where(h => h.RentalApplicationId == id && h.NewStatus == application.Status)
@@ -245,8 +244,8 @@ namespace Troy_Web_Property_Manager.Services
         public async Task<bool> CanReviewAsync(int id, CurrentUser user)
         {
             if (!user.IsManager) return false;
-            var status = await db.RentalApplications.Where(a => a.Id == id).Select(a => (int?)a.Status).FirstOrDefaultAsync();
-            return status is int s && ApplicationWorkflow.CanReview((ApplicationStatus)s);
+            var status = await db.RentalApplications.Where(a => a.Id == id).Select(a => (long?)a.Status).FirstOrDefaultAsync();
+            return status is long s && ApplicationWorkflow.CanReview((ApplicationStatus)s);
         }
 
         public async Task<ServiceResult> ReviewAsync(int id, ReviewViewModel model, CurrentUser user)
@@ -344,7 +343,7 @@ namespace Troy_Web_Property_Manager.Services
         public Task<List<ApplicationListItemViewModel>> ListAsync(ApplicationStatus? status, int? propertyId, CurrentUser user)
         {
             var query = Visible(user).AsNoTracking();
-            if (status is not null) query = query.Where(a => a.Status == (int)status.Value);
+            if (status is not null) query = query.Where(a => a.Status == (long)status.Value);
             if (propertyId is not null) query = query.Where(a => a.Unit.PropertyId == propertyId);
             return query.OrderByDescending(a => a.Id).Select(a => new ApplicationListItemViewModel
             {
@@ -357,9 +356,6 @@ namespace Troy_Web_Property_Manager.Services
                 SubmittedAt = a.Submitted
             }).ToListAsync();
         }
-
-        public Task<List<SelectListItem>> GetPropertyOptionsAsync() =>
-            db.Properties.OrderBy(p => p.Name).Select(p => new SelectListItem(p.Name, p.Id.ToString())).ToListAsync();
 
         // ---------------- Helpers ----------------
         /// <summary>Loads an application for an applicant write; rejects it unless it is theirs and still Draft or Returned.</summary>
@@ -390,13 +386,13 @@ namespace Troy_Web_Property_Manager.Services
             application.ApplicationStatusHistories.Add(new ApplicationStatusHistory
             {
                 PreviousStatus = application.Status,
-                NewStatus = (int)to,
+                NewStatus = (long)to,
                 Outcome = outcome,
                 Comment = comment,
                 ChangedByUser = user.Id,
                 ChangedDate = DateTime.Now
             });
-            application.Status = (int)to;
+            application.Status = (long)to;
         }
     }
 }

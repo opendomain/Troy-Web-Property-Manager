@@ -5,13 +5,6 @@ using SendGrid.Helpers.Mail;
 
 namespace Troy_Web_Property_Manager.Services
 {
-    public class SendGridOptions
-    {
-        public string ApiKey { get; set; } = "";
-        public string FromEmail { get; set; } = "";
-        public string FromName { get; set; } = "";
-    }
-
     public class EmailSender : IEmailSender
     {
         private readonly SendGridOptions _options;
