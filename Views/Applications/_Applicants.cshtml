@@ -25,13 +25,13 @@
                 @if (Model.CanEdit && !applicant.IsStarter)
                 {
                     <button type="button" class="btn btn-sm btn-link p-0 text-danger"
-                            data-modal-url="@Url.Action("RemoveApplicant", "Applications", new { id = Model.Id, applicantId = applicant.ApplicantId })">@(applicant.IsYou ? "Leave" : "Remove")</button>
+                            data-modal-url="@Url.Action("RemoveApplicant", "Applications", new { id = Model.Id, applicantId = applicant.ApplicantId })"><i class="fa-solid @(applicant.IsYou ? "fa-right-from-bracket" : "fa-user-minus") me-1" aria-hidden="true"></i>@(applicant.IsYou ? "Leave" : "Remove")</button>
                 }
             </span>
         }
         @if (Model.CanEdit)
         {
-            <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("AddApplicant", "Applications", new { id = Model.Id })">Add applicant</button>
+            <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("AddApplicant", "Applications", new { id = Model.Id })"><i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add applicant</button>
         }
     </div>
 </div>

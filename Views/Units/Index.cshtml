@@ -2,7 +2,7 @@
 @{
     ViewData["Title"] = "Available units";
 }
-<h1>@ViewData["Title"]</h1>
+<h1><i class="fa-solid fa-door-open me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
 @*
     The applicant's Available units page (2.b). Only shows units with no lease covering today (2.d), filtered in SQL.
     The property and bedroom filters are a GET form, same as on the application list.
@@ -26,10 +26,10 @@
         </select>
     </div>
     <div class="col-auto">
-        <button type="submit" class="btn btn-outline-primary">Filter</button>
+        <button type="submit" class="btn btn-outline-primary"><i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Filter</button>
         @if (Model.IsFiltered)
         {
-            <a asp-action="Index" class="btn btn-link">Clear</a>
+            <a asp-action="Index" class="btn btn-link"><i class="fa-solid fa-xmark me-1" aria-hidden="true"></i>Clear</a>
         }
     </div>
 </form>
@@ -66,7 +66,7 @@ else
                                and a crawler or link prefetch can't create applications just by following a URL. *@
                             <form asp-controller="Applications" asp-action="Start" method="post">
                                 <input type="hidden" name="unitId" value="@unit.Id" />
-                                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                                <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-paper-plane me-1" aria-hidden="true"></i>Apply</button>
                             </form>
                         </td>
                     </tr>
