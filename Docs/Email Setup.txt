@@ -5,7 +5,7 @@
 5. Create API key
 6. setup keys for environment to use
 
-dotnet user-secrets set "SendGrid:ApiKey" "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"
+dotnet user-secrets set "SendGrid:ApiKey" "<your-sendgrid-api-key>"
 dotnet user-secrets set "SendGrid:FromEmail" "test01@4dc.com"
 dotnet user-secrets set "SendGrid:FromName" "Property Manager"
 

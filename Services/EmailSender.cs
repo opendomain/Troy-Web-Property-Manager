@@ -2,8 +2,6 @@
 using Microsoft.Extensions.Options;
 using SendGrid;
 using SendGrid.Helpers.Mail;
-using System.IO;
-using System.Net.Http; // add this
 
 namespace Troy_Web_Property_Manager.Services
 {
@@ -47,6 +45,13 @@ namespace Troy_Web_Property_Manager.Services
                 throw new InvalidOperationException("SendGrid isn't configured (SendGrid:ApiKey is missing).");
             }
 
+            // Validate configured from address so SendGrid doesn't throw with an unclear error.
+            if (string.IsNullOrWhiteSpace(_options.FromEmail))
+            {
+                _logger.LogError("SendGrid:FromEmail is not configured.");
+                throw new InvalidOperationException("SendGrid:FromEmail is not configured.");
+            }
+
             // HTML only. Identity's messages are HTML, so sending them as plain text would show the raw tags.
             var msg = new SendGridMessage
             {
@@ -55,13 +60,6 @@ namespace Troy_Web_Property_Manager.Services
                 HtmlContent = htmlMessage
             };
             msg.AddTo(new EmailAddress(email));
-
-            // Validate configured from address so SendGrid doesn't throw with an unclear error.
-            if (string.IsNullOrWhiteSpace(_options.FromEmail))
-            {
-                _logger.LogError("SendGrid:FromEmail is not configured.");
-                throw new InvalidOperationException("SendGrid:FromEmail is not configured.");
-            }
 
             // Turn off click tracking - SendGrid rewrites the links and that can break the confirmation token.
             msg.SetClickTracking(false, false);

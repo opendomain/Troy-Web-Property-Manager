@@ -30,13 +30,16 @@ namespace Troy_Web_Property_Manager.Services
     public class ApplicationService(ApplicationDbContext db)
     {
         /// <summary>
-        /// Who can see what, in one spot: managers see every application, applicants only their own. Every query that
-        /// touches an application starts here so no method can forget the ownership check. It returns an
+        /// Who can see what, in one spot: managers see every application that has been submitted at least once,
+        /// applicants only their own. A draft that was never submitted is still private to the applicant. Every query
+        /// that touches an application starts here so no method can forget the ownership check. It returns an
         /// <see cref="IQueryable{T}"/>, so the filter ends up in the SQL WHERE clause.
         /// </summary>
         private IQueryable<RentalApplication> Visible(CurrentUser user)
         {
-            return user.IsManager ? db.RentalApplications : db.RentalApplications.Where(a => a.Applicant.UserId == user.Id);
+            return user.IsManager
+                ? db.RentalApplications.Where(a => a.Submitted != null)
+                : db.RentalApplications.Where(a => a.Applicant.UserId == user.Id);
         }
 
         /// <summary>
@@ -251,6 +254,8 @@ namespace Troy_Web_Property_Manager.Services
             // Remember these details to pre-fill their next application.
             var defaults = application.Applicant;
             (defaults.Name, defaults.Phone, defaults.Email, defaults.CurrentAddress) = (info.Name, info.Phone, info.Email, info.CurrentAddress);
+            // If section 1 was already saved, the application row itself doesn't change, so force the status check.
+            GuardStatus(application);
             return await SaveApplicationAsync();
         }
 

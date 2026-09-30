@@ -37,7 +37,9 @@ namespace Troy_Web_Property_Manager.Rules
         /// <summary>Same as <see cref="ActiveOn"/> but in memory, for code and tests that already have a lease object.</summary>
         public static bool IsActiveOn(Lease lease, DateTime day)
         {
-            return ActiveOn(day).Compile()(lease);
+            // Same comparison as ActiveOn, written out so we don't compile an expression on every call.
+            var date = day.Date;
+            return lease.StartDate <= date && lease.EndDate > date;
         }
     }
 }

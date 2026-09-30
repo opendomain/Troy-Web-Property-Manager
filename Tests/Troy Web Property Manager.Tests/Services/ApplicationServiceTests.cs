@@ -355,6 +355,19 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task SaveApplicantInformation_AlreadySavedAndSubmittedConcurrently_IsRejected()
+        {
+            // Section 1 is already saved, so this save doesn't change the application row itself.
+            var id = await CompleteDraftAsync();
+
+            var result = await Service(new ChangeStatusBeforeSave(id, ApplicationStatus.Submitted))
+                .SaveApplicantInformationAsync(id, Info("changed@example.com"), ApplicantUser);
+
+            Assert.True(result.Conflict);
+            Assert.NotEqual("changed@example.com", _db.CreateContext().ApplicantInformation.Single(i => i.RentalApplicationId == id).Email);
+        }
+
+        [Fact]
         public async Task DeleteResidence_WhenSubmittedConcurrently_IsRejected()
         {
             var id = await CompleteDraftAsync();
@@ -545,8 +558,8 @@ namespace Troy_Web_Property_Manager.Tests.Services
         [Fact]
         public async Task List_ApplicantSeesOnlyOwnApplications()
         {
-            var mine = await StartAsync(ApplicantUser);
-            var theirs = await StartAsync(OtherApplicantUser);
+            var mine = await SubmittedAsync(ApplicantUser);
+            var theirs = await SubmittedAsync(OtherApplicantUser);
 
             var applicantList = await Service().ListAsync(null, null, ApplicantUser);
             var managerList = await Service().ListAsync(null, null, ManagerUser);
@@ -556,15 +569,25 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task NeverSubmittedDraft_IsHiddenFromManagers()
+        {
+            var draft = await StartAsync(ApplicantUser);
+
+            Assert.Empty(await Service().ListAsync(null, null, ManagerUser));
+            Assert.Null(await Service().GetEditorAsync(draft, null, ManagerUser));
+            Assert.Equal(new[] { draft }, (await Service().ListAsync(null, null, ApplicantUser)).Select(a => a.Id));
+        }
+
+        [Fact]
         public async Task List_FiltersByStatusAndProperty()
         {
             var draft = await StartAsync(unitId: _db.SecondUnitId);
             var submitted = await SubmittedAsync(unitId: _db.UnitId);
 
             Assert.Equal(new[] { submitted }, (await Service().ListAsync(ApplicationStatus.Submitted, null, ManagerUser)).Select(a => a.Id));
-            Assert.Equal(new[] { draft }, (await Service().ListAsync(ApplicationStatus.Draft, null, ManagerUser)).Select(a => a.Id));
-            Assert.Equal(2, (await Service().ListAsync(null, _db.PropertyId, ManagerUser)).Count);
-            Assert.Empty(await Service().ListAsync(null, 9999, ManagerUser));
+            Assert.Equal(new[] { draft }, (await Service().ListAsync(ApplicationStatus.Draft, null, ApplicantUser)).Select(a => a.Id));
+            Assert.Equal(2, (await Service().ListAsync(null, _db.PropertyId, ApplicantUser)).Count);
+            Assert.Empty(await Service().ListAsync(null, 9999, ApplicantUser));
         }
 
         [Fact]

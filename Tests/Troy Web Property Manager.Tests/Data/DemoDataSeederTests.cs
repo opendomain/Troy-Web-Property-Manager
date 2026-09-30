@@ -241,10 +241,15 @@ namespace Troy_Web_Property_Manager.Tests.Data
             var service = new ApplicationService(_db.CreateContext());
             var manager = new CurrentUser((await _db.CreateContext().Users.SingleAsync(u => u.Email == "manager1@example.com")).Id, IsManager: true);
 
-            Assert.Equal(applications.Count, (await service.ListAsync(null, null, manager)).Count);
+            // Managers only see applications that were submitted at least once; never-submitted drafts stay private.
+            var submitted = applications.Where(a => a.Submitted != null).ToList();
+            Assert.NotEmpty(submitted);
+            Assert.Equal(submitted.Count, (await service.ListAsync(null, null, manager)).Count);
             foreach (var application in applications)
             {
-                Assert.NotNull(await service.GetEditorAsync(application.Id, null, manager));
+                var editor = await service.GetEditorAsync(application.Id, null, manager);
+                if (application.Submitted != null) Assert.NotNull(editor);
+                else Assert.Null(editor);
             }
         }
     }

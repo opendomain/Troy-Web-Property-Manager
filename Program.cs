@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
-using System.Threading.Tasks;
 
 namespace Troy_Web_Property_Manager
 {
@@ -131,7 +130,7 @@ namespace Troy_Web_Property_Manager
         {
             // The Status ids have to match the ApplicationStatus enum, so we insert them explicitly
             // (the id column is an identity, hence IDENTITY_INSERT). Only the missing ones get added.
-            var existingStatusIds = dbContext.Statuses.Select(s => s.Id).ToHashSet();
+            var existingStatusIds = await dbContext.Statuses.Select(s => s.Id).ToHashSetAsync();
             var missingStatuses = Enum.GetValues<ApplicationStatus>()
                 .Where(s => !existingStatusIds.Contains((long)s))
                 .Select(s => new Status { Id = (long)s, Name = s.ToString() })
@@ -157,7 +156,7 @@ namespace Troy_Web_Property_Manager
                 ("Loft", false),
             ];
 
-            var existingUnitTypes = dbContext.UnitTypes.Select(t => t.Name).ToHashSet();
+            var existingUnitTypes = await dbContext.UnitTypes.Select(t => t.Name).ToHashSetAsync();
             dbContext.UnitTypes.AddRange(unitTypes
                 .Where(t => !existingUnitTypes.Contains(t.Name))
                 .Select(t => new UnitType { Name = t.Name, IsActive = t.IsActive }));
