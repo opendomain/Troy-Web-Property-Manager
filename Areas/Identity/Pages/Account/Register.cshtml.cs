@@ -8,7 +8,9 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Troy_Web_Property_Manager.Models;
+using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
 {
@@ -23,17 +25,20 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
         private readonly UserManager<IdentityUser> _userManager;
         private readonly ILogger<RegisterModel> _logger;
         private readonly IEmailSender _emailSender;
+        private readonly SendGridOptions _sendGridOptions;
 
         public RegisterModel(
             UserManager<IdentityUser> userManager,
             SignInManager<IdentityUser> signInManager,
             ILogger<RegisterModel> logger,
-            IEmailSender emailSender)
+            IEmailSender emailSender,
+            IOptions<SendGridOptions> sendGridOptions)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _logger = logger;
             _emailSender = emailSender;
+            _sendGridOptions = sendGridOptions.Value;
         }
 
         [BindProperty]
@@ -107,18 +112,27 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
                         values: new { area = "Identity", userId = user.Id, code, returnUrl },
                         protocol: Request.Scheme)!;
 
-                    try
+                    // If the email can't go out, keep the account and let RegisterConfirmation show the link on the page
+                    // instead. TempData is encrypted, one-time and tied to this browser, so only the person who just
+                    // registered sees it. No API key counts as a failure too - in Development EmailSender only logs the
+                    // email then, so nothing would actually be sent.
+                    if (string.IsNullOrWhiteSpace(_sendGridOptions.ApiKey))
                     {
-                        await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
-                            $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                        _logger.LogWarning("SendGrid isn't configured; showing the confirmation link on the page instead.");
+                        TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        // Remove the account so the user can register again instead of being stuck unconfirmed.
-                        _logger.LogError(ex, "Failed to send confirmation email; removing new account.");
-                        await _userManager.DeleteAsync(user);
-                        ModelState.AddModelError(string.Empty, "We couldn't send your confirmation email. Please try again later.");
-                        return Page();
+                        try
+                        {
+                            await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
+                                $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to send confirmation email; showing the confirmation link on the page instead.");
+                            TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
+                        }
                     }
 
                     // If account confirmation is required, redirect to register confirmation page

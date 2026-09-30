@@ -13,7 +13,7 @@ Troy Web Property Manager
 
 For full email functionality, see  DOCS\Email Setup
 
-Without a SendGrid key the app still runs: in Development the confirmation email is written to the log instead, so you can copy the link from there.
+Without a SendGrid key (or if sending fails) the app still runs: after registering, the confirmation page shows a "Confirm your account" button instead of sending the email.
 
 ## Security notes
 
