@@ -5,6 +5,17 @@
 }
 
 <div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+    <h1 class="display-4">Troy Web Property Manager</h1>
+    @if (User.IsInRole(AppRoles.PropertyManager))
+    {
+        <p>Manage your <a asp-controller="Properties" asp-action="Index">properties</a> and review <a asp-controller="Applications" asp-action="Index">applications</a>.</p>
+    }
+    else if (User.IsInRole(AppRoles.Applicant))
+    {
+        <p>Browse <a asp-controller="Units" asp-action="Index">available units</a> or check on <a asp-controller="Applications" asp-action="Index">your applications</a>.</p>
+    }
+    else
+    {
+        <p><a asp-area="Identity" asp-page="/Account/Login">Log in</a> or <a asp-area="Identity" asp-page="/Account/Register">register</a> to get started.</p>
+    }
 </div>

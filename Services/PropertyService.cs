@@ -111,7 +111,16 @@ namespace Troy_Web_Property_Manager.Services
             // No applications means no leases either, since the only way to get a lease is an approved application.
             db.Units.RemoveRange(property.Units);
             db.Properties.Remove(property);
-            await db.SaveChangesAsync();
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (SqlErrors.IsReferenceConflict(ex))
+            {
+                // Someone applied for one of its units between our check and this save; the FK stopped the delete.
+                db.ChangeTracker.Clear();
+                return ServiceResult.Error("This property has units with applications, so it can't be removed.");
+            }
             return ServiceResult.Ok();
         }
 
@@ -191,7 +200,16 @@ namespace Troy_Web_Property_Manager.Services
                 return ServiceResult.Error("This unit has applications, so it can't be removed.");
             }
             db.Units.Remove(unit);
-            await db.SaveChangesAsync();
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (SqlErrors.IsReferenceConflict(ex))
+            {
+                // Someone applied for it between our check and this save; the FK stopped the delete.
+                db.ChangeTracker.Clear();
+                return ServiceResult.Error("This unit has applications, so it can't be removed.");
+            }
             return ServiceResult.Ok();
         }
 
