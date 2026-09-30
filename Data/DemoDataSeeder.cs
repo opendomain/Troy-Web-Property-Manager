@@ -11,7 +11,8 @@ namespace Troy_Web_Property_Manager.Data
     /// with units, and applications in every status along with their history, residences and leases.
     /// It plays by the same rules as the app: every history row is a legal workflow step, units never have
     /// overlapping leases, nothing gets submitted while its unit is leased, and an applicant has at most one open
-    /// application per unit. The seed is fixed so everyone gets the same data.
+    /// application per unit (whether they started it or were added to it). Some applications have a second applicant.
+    /// The seed is fixed so everyone gets the same data.
     /// </summary>
     /// <remarks>
     /// <para>This covers Technical 2.b.ii (seed lookups, managers, applicants, properties, units and applications in
@@ -36,7 +37,8 @@ namespace Troy_Web_Property_Manager.Data
         private const int ApplicationCount = 45;
 
         /// <summary>Seeds the demo data unless there are already properties. Returns false if it skipped.</summary>
-        public static async Task<bool> SeedAsync(ApplicationDbContext db, UserManager<IdentityUser> userManager)
+        /// <param name="now">"Now" in the business's time zone (BusinessClock); defaults to the server's clock.</param>
+        public static async Task<bool> SeedAsync(ApplicationDbContext db, UserManager<IdentityUser> userManager, DateTime? now = null)
         {
             if (await db.Properties.AnyAsync()) return false;
 
@@ -52,7 +54,7 @@ namespace Troy_Web_Property_Manager.Data
 
             var properties = CreateProperties(faker, await db.UnitTypes.ToListAsync());
             var applicants = applicantUsers.Select(user => CreateApplicant(faker, user)).ToList();
-            var applications = new ApplicationGenerator(faker, managers, DateTime.Now)
+            var applications = new ApplicationGenerator(faker, managers, now ?? DateTime.Now)
                 .Generate(properties.SelectMany(p => p.Units).ToList(), applicants);
 
             db.Properties.AddRange(properties);
@@ -188,9 +190,11 @@ namespace Troy_Web_Property_Manager.Data
             private readonly Dictionary<Unit, List<DateTime>> _submits = [];
             private readonly HashSet<(Applicant, Unit)> _open = [];
             private readonly List<RentalApplication> _applications = [];
+            private List<Applicant> _applicants = [];
 
             public List<RentalApplication> Generate(List<Unit> units, List<Applicant> applicants)
             {
+                _applicants = applicants;
                 // Approvals first, so every later submit can be checked against the leases they create.
                 // About a third of the units end up with a lease, some already expired.
                 foreach (var unit in f.PickRandom(units, units.Count / 3))
@@ -242,8 +246,29 @@ namespace Troy_Web_Property_Manager.Data
                 }
                 foreach (var submit in submits) Remember(_submits, unit, submit);
                 if (isOpen) _open.Add((applicant, unit));
+                MaybeAddSecondApplicant(application, applicant, unit, isOpen, times[0]);
                 _applications.Add(application);
                 return true;
+            }
+
+            /// <summary>
+            /// About one application in five gets a second applicant, added by the starter a little after they started
+            /// it. On an open application they're skipped if they already have an open one for the unit - the app
+            /// refuses that too.
+            /// </summary>
+            private void MaybeAddSecondApplicant(RentalApplication application, Applicant starter, Unit unit, bool isOpen, DateTime started)
+            {
+                if (!f.Random.Bool(0.2f)) return;
+                var other = f.PickRandom(_applicants);
+                if (other == starter || (isOpen && _open.Contains((other, unit)))) return;
+
+                application.ApplicationApplicants.Add(new ApplicationApplicant
+                {
+                    Applicant = other,
+                    Added = started.AddHours(1),
+                    AddedByUser = starter.UserId!
+                });
+                if (isOpen) _open.Add((other, unit));
             }
 
             /// <summary>
@@ -278,8 +303,17 @@ namespace Troy_Web_Property_Manager.Data
                     Status = (long)path[^1],
                     Created = times[0],
                     // Set on every submit, so it holds the latest one.
-                    Submitted = SubmitTimes(path, times).Select(t => (DateTime?)t).LastOrDefault()
+                    Submitted = SubmitTimes(path, times).Select(t => (DateTime?)t).LastOrDefault(),
+                    ApplicantInformationVersion = Guid.NewGuid(),
+                    ResidenceHistoryVersion = Guid.NewGuid()
                 };
+                // The starter is on it too, the same as when the app creates one.
+                application.ApplicationApplicants.Add(new ApplicationApplicant
+                {
+                    Applicant = applicant,
+                    Added = times[0],
+                    AddedByUser = applicant.UserId!
+                });
 
                 // Anything submitted has both sections saved; a draft could be anywhere.
                 var sectionsDone = path.Contains(ApplicationStatus.Submitted) ? 2 : f.Random.Int(0, 2);

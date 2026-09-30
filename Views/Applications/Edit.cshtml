@@ -59,6 +59,9 @@
     </div>
 }
 
+@* Everyone on the application. Its own partial so the add/remove modals can refresh just this part. *@
+<partial name="_Applicants" model="Model" />
+
 <div class="row">
     <div class="@(Model.IsManager ? "col-lg-8" : "col-12")">
         <p class="text-muted">Section: <strong>@Model.Section.DisplayName()</strong></p>
@@ -68,6 +71,11 @@
             @* Lets the POST know which section the button was clicked on. It only picks what to validate and show -
                permissions get worked out again on the server, so tampering with it gets you nothing. *@
             <input type="hidden" asp-for="Section" />
+            @* The Applicant Information version this page was loaded with. Continue (section 1) and Submit send it back,
+               and the save is rejected as stale if another applicant saved the section since. It's outside the
+               disabled fieldset, so it's posted from the Summary too. Residence History's version is inside
+               _ResidenceHistory so it refreshes with the residence list. *@
+            <input type="hidden" asp-for="ApplicantInformationVersion" />
 
             @* ModelOnly = errors that don't belong to a specific field (like "Add at least one prior residence" or
                "can no longer be edited"). Field errors show next to their fields in the section partials. *@

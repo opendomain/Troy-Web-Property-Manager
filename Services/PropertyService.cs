@@ -18,8 +18,11 @@ namespace Troy_Web_Property_Manager.Services
     /// needs - nested collections like a property's units included, all in one query. Availability is worked out in
     /// the query from the lease dates using the shared <see cref="LeaseRules.ActiveOn"/> expression.</para>
     /// </remarks>
-    public class PropertyService(ApplicationDbContext db)
+    public class PropertyService(ApplicationDbContext db, BusinessClock? clock = null)
     {
+        // "Today" in the business's time zone (see BusinessClock), for the leased/available checks.
+        private readonly BusinessClock _clock = clock ?? BusinessClock.Local;
+
         /// <summary>Data for the Properties page: every property, its units, and whether each one is leased today.</summary>
         public Task<List<PropertyViewModel>> GetPropertiesAsync()
         {
@@ -33,11 +36,11 @@ namespace Troy_Web_Property_Manager.Services
             return ProjectProperties(db.Properties.Where(p => p.Id == id)).FirstOrDefaultAsync();
         }
 
-        private static IQueryable<PropertyViewModel> ProjectProperties(IQueryable<Property> properties)
+        private IQueryable<PropertyViewModel> ProjectProperties(IQueryable<Property> properties)
         {
             // This is an Expression<Func<Lease, bool>> so EF can turn it into SQL. The AsQueryable() below is a trick
             // that lets u.Leases take an expression instead of a compiled delegate.
-            var leasedToday = LeaseRules.ActiveOn(DateTime.Today);
+            var leasedToday = LeaseRules.ActiveOn(_clock.Today);
             return properties.AsNoTracking().OrderBy(p => p.Name).Select(p => new PropertyViewModel
             {
                 Id = p.Id,
@@ -62,7 +65,7 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         public Task<List<AvailableUnitViewModel>> GetAvailableUnitsAsync(int? propertyId = null, int? minBedrooms = null)
         {
-            var leasedToday = LeaseRules.ActiveOn(DateTime.Today);
+            var leasedToday = LeaseRules.ActiveOn(_clock.Today);
             return db.Units.AsNoTracking()
             .Where(u => !u.Leases.AsQueryable().Any(leasedToday))
             .Where(u => propertyId == null || u.PropertyId == propertyId)
@@ -186,6 +189,7 @@ namespace Troy_Web_Property_Manager.Services
             catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
             {
                 // Someone else grabbed the same number between our check and this save.
+                db.ChangeTracker.Clear();
                 return ServiceResult.Error("This unit number already exists at the property.", nameof(model.UnitNumber));
             }
             return ServiceResult.Ok(unit.Id);

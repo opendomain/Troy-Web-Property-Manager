@@ -35,6 +35,12 @@ namespace Troy_Web_Property_Manager.Services
         /// can be saved with errors - they just block Submit until they're fixed.
         /// </summary>
         public IReadOnlyList<FieldError> Unresolved { get; private init; } = [];
+
+        /// <summary>
+        /// The section's new version after a successful save, so a form that stays open (the residence modal) can save
+        /// again without looking stale to itself.
+        /// </summary>
+        public Guid? Version { get; private init; }
         public bool Succeeded
         {
             get { return !NotFound && !Forbidden && Errors.Count == 0; }
@@ -46,9 +52,9 @@ namespace Troy_Web_Property_Manager.Services
         }
 
         /// <summary>Saved, with whatever rule errors are still left on it (see <see cref="Unresolved"/>).</summary>
-        public static ServiceResult Saved(IReadOnlyList<FieldError> unresolved, int id = 0)
+        public static ServiceResult Saved(IReadOnlyList<FieldError> unresolved, int id = 0, Guid? version = null)
         {
-            return new() { Id = id, Unresolved = unresolved };
+            return new() { Id = id, Unresolved = unresolved, Version = version };
         }
 
         /// <summary>Not saved, with an error on each field that stopped it.</summary>

@@ -74,6 +74,23 @@ namespace Troy_Web_Property_Manager.ViewModels
         /// </summary>
         public ApplicantInformationViewModel ApplicantInformation { get; set; } = new();
 
+        /// <summary>
+        /// Applicant Information's version when the page was loaded (hidden field). Continue sends it back, and the
+        /// save is rejected as stale if another applicant saved the section since. Only a concurrency check - it grants
+        /// nothing, so it's fine to bind.
+        /// </summary>
+        public Guid ApplicantInformationVersion { get; set; }
+
+        /// <summary>
+        /// Residence History's version when the page (or the residence list) was loaded (hidden field inside the
+        /// residence list, so it's refreshed along with it). Same idea as <see cref="ApplicantInformationVersion"/>.
+        /// Submit sends both, so an application isn't submitted with changes the applicant hasn't seen.
+        /// </summary>
+        public Guid ResidenceHistoryVersion { get; set; }
+
+        /// <summary>Everyone on the application, the one who started it first. Display only.</summary>
+        [BindNever] public List<ApplicationApplicantViewModel> Applicants { get; set; } = [];
+
         /// <summary>Current status, shown in the page header. Display only.</summary>
         [BindNever] public ApplicationStatus Status { get; set; }
 

@@ -30,6 +30,15 @@ namespace Troy_Web_Property_Manager.Controllers
         }
 
         /// <summary>
+        /// The modal form worked, but the current page no longer makes sense (e.g. you just left an application), so
+        /// site.js closes the modal and goes to <paramref name="url"/> instead of refreshing.
+        /// </summary>
+        protected IActionResult ModalRedirect(string url)
+        {
+            return Json(new { success = true, redirectUrl = url });
+        }
+
+        /// <summary>
         /// The modal form didn't validate, so send the same partial back with the errors and the modal redraws in place.
         /// We use 422 so site.js can tell this apart from a success (JSON) or an actual error.
         /// </summary>

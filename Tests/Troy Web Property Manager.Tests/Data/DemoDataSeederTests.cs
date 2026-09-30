@@ -50,6 +50,7 @@ namespace Troy_Web_Property_Manager.Tests.Data
                 .Include(a => a.ApplicationStatusHistories)
                 .Include(a => a.Leases)
                 .Include(a => a.Residences)
+                .Include(a => a.ApplicationApplicants)
                 .ToListAsync();
         }
 
@@ -187,6 +188,20 @@ namespace Troy_Web_Property_Manager.Tests.Data
                     Assert.Null(application.ReviewClaimed);
                 }
             });
+        }
+
+        [Fact]
+        public async Task Applicants_StarterIsAlwaysOn_AndNobodyHasTwoOpenApplicationsForAUnit()
+        {
+            var applications = await SeededApplicationsAsync();
+
+            Assert.All(applications, a => Assert.Contains(a.ApplicationApplicants, m => m.ApplicantId == a.ApplicantId));
+            Assert.Contains(applications, a => a.ApplicationApplicants.Count > 1); // some are shared, so the demo shows it
+
+            var open = applications.Where(a => !ApplicationWorkflow.IsTerminal((ApplicationStatus)a.Status))
+                .SelectMany(a => a.ApplicationApplicants.Select(m => (m.ApplicantId, a.UnitId)))
+                .ToList();
+            Assert.Equal(open.Count, open.Distinct().Count());
         }
 
         [Fact]

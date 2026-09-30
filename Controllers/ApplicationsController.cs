@@ -8,7 +8,8 @@ using Troy_Web_Property_Manager.ViewModels;
 namespace Troy_Web_Property_Manager.Controllers
 {
     /// <summary>
-    /// Rental applications: the list, the one-page editor, and the residence/withdraw/review modals.
+    /// Rental applications: the list, the one-page editor, the applicants on it, and the residence/withdraw/review
+    /// modals.
     /// <para>
     /// Security is layered. [Authorize] on the class lets in only our two roles, and each action narrows it down
     /// (applicants: Start, Edit POST, Residence, Withdraw; managers: Queue, Claim, Release, Review). Not logged in? You get sent to the login
@@ -16,7 +17,8 @@ namespace Troy_Web_Property_Manager.Controllers
     /// </para>
     /// <para>
     /// Roles alone can't stop applicant A from opening applicant B's application, so everything goes through
-    /// ApplicationService, which filters by owner. Someone else's application comes back as 404 rather than 403 so we
+    /// ApplicationService, which filters to the applications you're on (as the one who started it or an added
+    /// applicant). Someone else's application comes back as 404 rather than 403 so we
     /// don't even admit it exists. The views hide buttons you shouldn't use, and the global filter in Program.cs checks
     /// the antiforgery token on every POST.
     /// </para>
@@ -33,6 +35,9 @@ namespace Troy_Web_Property_Manager.Controllers
 
         // What the residence modal refreshes when it saves. Has to match the root id in _ResidenceHistory.cshtml.
         private const string ResidenceHistoryTarget = "#residence-history";
+
+        // What the add/remove applicant modals refresh. Has to match the root id in _Applicants.cshtml.
+        private const string ApplicantsTarget = "#application-applicants";
 
         // What the notes modal refreshes when it saves. Has to match the root id in Components/ManagerNotes/Default.cshtml.
         private const string ManagerNotesTarget = "#manager-notes";
@@ -119,12 +124,14 @@ namespace Troy_Web_Property_Manager.Controllers
                     ServiceResult result;
                     if (model.Section == ApplicationSection.ApplicantInformation)
                     {
-                        result = await applications.SaveApplicantInformationAsync(id, model.ApplicantInformation, CurrentUser);
+                        // The version the page was loaded with - stale if another applicant saved this section since.
+                        result = await applications.SaveApplicantInformationAsync(id, model.ApplicantInformation,
+                            model.ApplicantInformationVersion, CurrentUser);
                     }
                     else if (model.Section == ApplicationSection.ResidenceHistory)
                     {
                         // The modal already saved each residence. Here we just mark the section as saved.
-                        result = await applications.SaveResidenceHistoryAsync(id, CurrentUser);
+                        result = await applications.SaveResidenceHistoryAsync(id, model.ResidenceHistoryVersion, CurrentUser);
                     }
                     else return BadRequest(); // there's no Continue on the Summary, so someone's crafting posts
 
@@ -141,14 +148,17 @@ namespace Troy_Web_Property_Manager.Controllers
                         return RedirectToAction(nameof(Edit), new { id, section = model.Section });
                     }
 
-                    // Not saved (too long for the database, "no longer editable", someone else changed it): show the
-                    // same section with what they typed and the errors.
+                    // Not saved (too long for the database, "no longer editable", someone else saved it first): show the
+                    // same section with what they typed and the errors. The hidden version keeps its posted (old) value
+                    // from ModelState, so after a stale save, Continue stays stale until they reload.
                     AddErrors(result, model.Section == ApplicationSection.ApplicantInformation ? InfoPrefix : "");
                     return await RedisplayAsync(id, model);
 
                 case "submit":
-                    // 4.b.ii / 4.e: the service makes sure both sections are saved and the unit isn't already leased.
-                    var submitted = await applications.SubmitAsync(id, CurrentUser);
+                    // 4.b.ii / 4.e: the service makes sure both sections are saved and the unit isn't already leased,
+                    // and that neither section changed since this Summary was loaded.
+                    var submitted = await applications.SubmitAsync(id, model.ApplicantInformationVersion,
+                        model.ResidenceHistoryVersion, CurrentUser);
                     if (IsAccessFailure(submitted)) return Failure(submitted);
                     if (submitted.Succeeded)
                     {
@@ -207,24 +217,28 @@ namespace Troy_Web_Property_Manager.Controllers
         }
 
         /// <summary>
-        /// Can this user edit the residences? (Has to be their application, and Draft or Returned.) We check before
-        /// showing the form so a read-only application never opens an editable modal.
+        /// The page for this user if they can edit it (they're on it, and it's Draft or Returned), otherwise null. We
+        /// check before showing a form so a read-only application never opens an editable modal. It also gives the
+        /// modals the section's current version.
         /// </summary>
-        private async Task<bool> CanEditAsync(int id)
+        private async Task<ApplicationEditorViewModel?> EditableAsync(int id)
         {
-            return (await applications.GetEditorAsync(id, ApplicationSection.ResidenceHistory, CurrentUser))?.CanEdit == true;
+            var model = await applications.GetEditorAsync(id, ApplicationSection.ResidenceHistory, CurrentUser);
+            return model?.CanEdit == true ? model : null;
         }
 
         /// <summary>
         /// Residence form for the modal - add if there's no <paramref name="residenceId"/>, otherwise edit. When
-        /// editing, any errors still on the saved residence show under their fields straight away.
+        /// editing, any errors still on the saved residence show under their fields straight away. The form carries
+        /// Residence History's version as of now, so saving is rejected if another applicant saves the section first.
         /// </summary>
         [Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> Residence(int id, int? residenceId)
         {
-            if (!await CanEditAsync(id)) return NotFound();
+            var editor = await EditableAsync(id);
+            if (editor is null) return NotFound();
             var model = residenceId is null
-                ? new ResidenceViewModel { ApplicationId = id }
+                ? new ResidenceViewModel { ApplicationId = id, SectionVersion = editor.ResidenceHistoryVersion }
                 : await applications.GetResidenceAsync(id, residenceId.Value, CurrentUser);
             if (model is null) return NotFound();
             foreach (var error in model.Errors)
@@ -252,10 +266,12 @@ namespace Troy_Web_Property_Manager.Controllers
             if (result.Unresolved.Count == 0) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
 
             // Redraw on the saved residence, so saving again edits it instead of adding a second one. Clearing
-            // ModelState drops the posted ResidenceId (the hidden field would otherwise keep the old empty value) and
-            // any binding errors, which the residence rules report in plainer words anyway.
+            // ModelState drops the posted ResidenceId and SectionVersion (the hidden fields would otherwise keep the
+            // old values) and any binding errors, which the residence rules report in plainer words anyway. The new
+            // version means this applicant's own save doesn't make their next one look stale.
             ModelState.Clear();
             model.ResidenceId = result.Id;
+            model.SectionVersion = result.Version!.Value;
             model.SavedWithErrors = true;
             foreach (var error in result.Unresolved)
             {
@@ -268,26 +284,97 @@ namespace Troy_Web_Property_Manager.Controllers
         [Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> DeleteResidence(int id, int residenceId)
         {
-            if (!await CanEditAsync(id) || await applications.GetResidenceAsync(id, residenceId, CurrentUser) is null) return NotFound();
-            return PartialView("_Confirm", ConfirmDeleteResidence(id, residenceId));
+            var editor = await EditableAsync(id);
+            if (editor is null || await applications.GetResidenceAsync(id, residenceId, CurrentUser) is null) return NotFound();
+            return PartialView("_Confirm", ConfirmDeleteResidence(id, residenceId, editor.ResidenceHistoryVersion));
         }
 
         /// <summary>
         /// Actually removes the residence. <c>[ActionName]</c> lets the GET and POST share a URL, since C# won't let
-        /// two methods have the same signature.
+        /// two methods have the same signature. <paramref name="version"/> is Residence History's version when the
+        /// confirmation opened (it's in the post URL), so it's rejected if another applicant saved the section since.
         /// </summary>
         [HttpPost, ActionName(nameof(DeleteResidence)), Authorize(Roles = AppRoles.Applicant)]
-        public async Task<IActionResult> DeleteResidenceConfirmed(int id, int residenceId)
+        public async Task<IActionResult> DeleteResidenceConfirmed(int id, int residenceId, Guid version)
         {
-            var result = await applications.DeleteResidenceAsync(id, residenceId, CurrentUser);
+            var result = await applications.DeleteResidenceAsync(id, residenceId, version, CurrentUser);
             if (IsAccessFailure(result)) return Failure(result);
             if (result.Succeeded) return ModalSuccess(ResidenceHistoryTarget, Url.Action(nameof(Residences), new { id }));
-            return ModalFailed("_Confirm", ConfirmDeleteResidence(id, residenceId), result);
+            return ModalFailed("_Confirm", ConfirmDeleteResidence(id, residenceId, version), result);
         }
 
-        private ConfirmViewModel ConfirmDeleteResidence(int id, int residenceId)
+        private ConfirmViewModel ConfirmDeleteResidence(int id, int residenceId, Guid version)
         {
-            return new("Remove residence", "Remove this residence?", Url.Action(nameof(DeleteResidence), new { id, residenceId })!, "Remove");
+            return new("Remove residence", "Remove this residence?", Url.Action(nameof(DeleteResidence), new { id, residenceId, version })!, "Remove");
+        }
+
+        // ---------------- Applicants on the application (modals) ----------------
+        // Any applicant on the application can add another applicant by email, or remove one (or leave), while it can
+        // still be edited. The service checks all of that; these actions just drive the modals.
+
+        /// <summary>Just the applicants panel. site.js calls this to refresh it after adding or removing someone.</summary>
+        public async Task<IActionResult> Applicants(int id)
+        {
+            var model = await applications.GetEditorAsync(id, null, CurrentUser);
+            return model is null ? NotFound() : PartialView("_Applicants", model);
+        }
+
+        /// <summary>"Add applicant" form for the modal.</summary>
+        [Authorize(Roles = AppRoles.Applicant)]
+        public async Task<IActionResult> AddApplicant(int id)
+        {
+            if (await EditableAsync(id) is null) return NotFound();
+            return PartialView("_AddApplicantForm", new AddApplicantViewModel { ApplicationId = id });
+        }
+
+        [HttpPost, Authorize(Roles = AppRoles.Applicant)]
+        public async Task<IActionResult> AddApplicant(int id, AddApplicantViewModel model)
+        {
+            model.ApplicationId = id;
+            if (!ModelState.IsValid) return ModalInvalid("_AddApplicantForm", model);
+
+            var result = await applications.AddApplicantAsync(id, model, CurrentUser);
+            if (IsAccessFailure(result)) return Failure(result);
+            if (result.Succeeded) return ModalSuccess(ApplicantsTarget, Url.Action(nameof(Applicants), new { id }));
+            return ModalFailed("_AddApplicantForm", model, result);
+        }
+
+        /// <summary>"Are you sure?" modal for removing an applicant, or leaving when it's yourself.</summary>
+        [Authorize(Roles = AppRoles.Applicant)]
+        public async Task<IActionResult> RemoveApplicant(int id, int applicantId)
+        {
+            var applicant = (await EditableAsync(id))?.Applicants.FirstOrDefault(a => a.ApplicantId == applicantId);
+            if (applicant is null || applicant.IsStarter) return NotFound();
+            return PartialView("_Confirm", ConfirmRemoveApplicant(id, applicant));
+        }
+
+        [HttpPost, ActionName(nameof(RemoveApplicant)), Authorize(Roles = AppRoles.Applicant)]
+        public async Task<IActionResult> RemoveApplicantConfirmed(int id, int applicantId)
+        {
+            // Look them up before removing, to know if they're leaving (they can't see the page afterwards).
+            var applicant = (await applications.GetEditorAsync(id, null, CurrentUser))?.Applicants.FirstOrDefault(a => a.ApplicantId == applicantId);
+            var result = await applications.RemoveApplicantAsync(id, applicantId, CurrentUser);
+            if (IsAccessFailure(result)) return Failure(result);
+            if (result.Succeeded)
+            {
+                if (applicant?.IsYou == true)
+                {
+                    SetMessage("You left the application.");
+                    return ModalRedirect(Url.Action(nameof(Index))!);
+                }
+                return ModalSuccess(ApplicantsTarget, Url.Action(nameof(Applicants), new { id }));
+            }
+            return ModalFailed("_Confirm", ConfirmRemoveApplicant(id, applicant ?? new ApplicationApplicantViewModel { ApplicantId = applicantId }), result);
+        }
+
+        private ConfirmViewModel ConfirmRemoveApplicant(int id, ApplicationApplicantViewModel applicant)
+        {
+            var action = Url.Action(nameof(RemoveApplicant), new { id, applicantId = applicant.ApplicantId })!;
+            // No email if they'd already gone by the time a failed remove redraws this.
+            var who = string.IsNullOrEmpty(applicant.Email) ? "this applicant" : applicant.Email;
+            return applicant.IsYou
+                ? new("Leave application", "Leave this application? You won't be able to see it any more unless someone adds you back.", action, "Leave")
+                : new("Remove applicant", $"Remove {who} from this application? They won't be able to see it any more.", action, "Remove");
         }
 
         // ---------------- Withdraw (modal, Challenge a) ----------------
