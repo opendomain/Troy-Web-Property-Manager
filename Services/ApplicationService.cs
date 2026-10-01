@@ -723,6 +723,10 @@ namespace Troy_Web_Property_Manager.Services
         {
             var action = $"Review ({model.Outcome})";
             if (!user.IsManager) return Logged(ServiceResult.Forbid("Only property managers can review applications."), action, id, user);
+            if (!model.Outcome.HasValue || !Enum.IsDefined(typeof(ReviewOutcome), model.Outcome.Value))
+            {
+                return Logged(ServiceResult.Error("Choose a valid outcome.", nameof(model.Outcome)), action, id, user);
+            }
 
             try
             {
