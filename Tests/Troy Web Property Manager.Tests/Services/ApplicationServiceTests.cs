@@ -466,6 +466,31 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task SaveApplicantInformation_FitsOnceTrimmed_IsSaved()
+        {
+            var id = await StartAsync();
+            var info = Info();
+            info.Name = "  " + new string('x', 50) + "  ";
+
+            AssertOk(await SaveInfoAsync(id, info, ApplicantUser));
+
+            Assert.Equal(new string('x', 50), (await LoadAsync(id)).ApplicantInformation!.Name);
+        }
+
+        [Fact]
+        public async Task SaveResidence_FitsOnceTrimmed_IsSaved()
+        {
+            var id = await StartAsync();
+            var residence = Residence();
+            residence.Address = new string('x', 50) + " ";
+
+            var result = await SaveResidenceAsync(id, residence, ApplicantUser);
+
+            AssertOk(result);
+            Assert.Equal(new string('x', 50), (await _db.CreateContext().Residences.SingleAsync(r => r.Id == result.Id)).Address);
+        }
+
+        [Fact]
         public async Task SaveResidence_WithErrors_SavesAndReturnsItsIdAndErrors()
         {
             var id = await StartAsync();

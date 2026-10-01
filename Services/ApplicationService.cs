@@ -411,14 +411,17 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
+            // Trim first, so the length check is on what would be stored.
+            (model.Name, model.Phone, model.Email, model.CurrentAddress) =
+                (Clean(model.Name), Clean(model.Phone), Clean(model.Email), Clean(model.CurrentAddress));
             if (TooLongToSave(model) is { } tooLong) return Logged(tooLong, "Save applicant information", id, user);
 
             // This only saves to this application - other ones (like already submitted ones) aren't touched.
             var info = application!.ApplicantInformation ??= new ApplicantInformation();
-            info.Name = Clean(model.Name);
-            info.Phone = Clean(model.Phone);
-            info.Email = Clean(model.Email);
-            info.CurrentAddress = Clean(model.CurrentAddress);
+            info.Name = model.Name;
+            info.Phone = model.Phone;
+            info.Email = model.Email;
+            info.CurrentAddress = model.CurrentAddress;
             application.ApplicantInformationSaved = true;
 
             // Check what was actually saved (trimmed), not what was posted.
@@ -485,6 +488,9 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
+            // Trim first, so the length check is on what would be stored.
+            (model.Address, model.LandlordName, model.LandlordPhone) =
+                (Clean(model.Address), Clean(model.LandlordName), Clean(model.LandlordPhone));
             if (TooLongToSave(model) is { } tooLong) return Logged(tooLong, "Save residence", id, user);
             // Look the residence up in this application's residences only, not by id across the whole table,
             // so a faked ResidenceId can't reach into another application.
@@ -492,9 +498,9 @@ namespace Troy_Web_Property_Manager.Services
                 ? new Residence()
                 : application!.Residences.FirstOrDefault(r => r.Id == model.ResidenceId);
             if (residence is null) return Logged(ServiceResult.Missing(), "Save residence", id, user);
-            residence.Address = Clean(model.Address);
-            residence.LandlordName = Clean(model.LandlordName);
-            residence.LandlordPhone = Clean(model.LandlordPhone);
+            residence.Address = model.Address;
+            residence.LandlordName = model.LandlordName;
+            residence.LandlordPhone = model.LandlordPhone;
             residence.MoveInDate = model.MoveInDate;
             residence.MoveOutDate = model.MoveOutDate;
             if (model.ResidenceId is null) application!.Residences.Add(residence);
