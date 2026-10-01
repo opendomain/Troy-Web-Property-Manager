@@ -4,6 +4,7 @@ An ASP.NET Core MVC app (.NET 10, EF Core 10, SQL Server) for renting out units.
 
 ## Prerequisites
 
+Without a SendGrid key (or if sending fails) the app still runs: after registering, the confirmation page shows a "Confirm your account" button instead of sending the email.
 | What | Why | Notes |
 |---|---|---|
 | [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) | Build and run | `dotnet --list-sdks` should show a `10.0.x` SDK. |
