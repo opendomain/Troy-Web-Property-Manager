@@ -178,6 +178,18 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task SaveUnit_PropertyRemovedDuringSave_IsNotFound()
+        {
+            // The FK stops the insert when the property goes between the existence check and the save.
+            var service = new PropertyService(_db.CreateContext(new FakeSqlErrors.OnSave(FakeSqlErrors.ReferenceConflict)), logger: _log);
+
+            var result = await service.SaveUnitAsync(NewUnit());
+
+            Assert.True(result.NotFound);
+            Assert.DoesNotContain(await _db.CreateContext().Units.ToListAsync(), u => u.UnitNumber == "201");
+        }
+
+        [Fact]
         public async Task Database_RejectsDuplicateUnitNumberAtProperty()
         {
             var db = _db.CreateContext();

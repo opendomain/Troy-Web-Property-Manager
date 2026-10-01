@@ -63,8 +63,8 @@ namespace Troy_Web_Property_Manager.Services
         public const string ChangedBeforeSubmitMessage =
             "This application was changed by someone else after you opened the Summary. Reload the page and check it before submitting.";
 
-        /// <summary>How many times Start tries before giving up on losing races to simultaneous requests.</summary>
-        private const int MaxStartAttempts = 3;
+        /// <summary>How many times Start and Add applicant try before giving up on losing races to simultaneous requests.</summary>
+        private const int MaxRaceAttempts = 3;
 
         /// <summary>Statuses that count as an open application (the ones the unique index covers).</summary>
         private static readonly long[] OpenStatuses =
@@ -171,11 +171,11 @@ namespace Troy_Web_Property_Manager.Services
                 {
                     result = await StartOnceAsync(unitId, user);
                 }
-                catch (Exception ex) when (attempt < MaxStartAttempts && (SqlErrors.IsUniqueViolation(ex) || SqlErrors.IsDeadlock(ex)))
+                catch (Exception ex) when (attempt < MaxRaceAttempts && (SqlErrors.IsUniqueViolation(ex) || SqlErrors.IsDeadlock(ex)))
                 {
-                    // Another request (probably a double-click on Apply) beat us to creating the profile or application.
-                    // Try again and we'll just pick up what it made.
-                    _logger.LogInformation("User {UserId} applied for unit {UnitId} twice at once; picking up the other request's application.",
+                    // Another request (a double-click on Apply, or someone adding this user to an application for the
+                    // same unit) beat us to it. Try again and we'll just pick up what it made.
+                    _logger.LogInformation("User {UserId} applying for unit {UnitId} lost a race with another request; retrying.",
                         user.Id, unitId);
                     db.ChangeTracker.Clear();
                 }
@@ -411,14 +411,17 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
+            // Trim first, so the length check is on what would be stored.
+            (model.Name, model.Phone, model.Email, model.CurrentAddress) =
+                (Clean(model.Name), Clean(model.Phone), Clean(model.Email), Clean(model.CurrentAddress));
             if (TooLongToSave(model) is { } tooLong) return Logged(tooLong, "Save applicant information", id, user);
 
             // This only saves to this application - other ones (like already submitted ones) aren't touched.
             var info = application!.ApplicantInformation ??= new ApplicantInformation();
-            info.Name = Clean(model.Name);
-            info.Phone = Clean(model.Phone);
-            info.Email = Clean(model.Email);
-            info.CurrentAddress = Clean(model.CurrentAddress);
+            info.Name = model.Name;
+            info.Phone = model.Phone;
+            info.Email = model.Email;
+            info.CurrentAddress = model.CurrentAddress;
             application.ApplicantInformationSaved = true;
 
             // Check what was actually saved (trimmed), not what was posted.
@@ -485,6 +488,9 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
+            // Trim first, so the length check is on what would be stored.
+            (model.Address, model.LandlordName, model.LandlordPhone) =
+                (Clean(model.Address), Clean(model.LandlordName), Clean(model.LandlordPhone));
             if (TooLongToSave(model) is { } tooLong) return Logged(tooLong, "Save residence", id, user);
             // Look the residence up in this application's residences only, not by id across the whole table,
             // so a faked ResidenceId can't reach into another application.
@@ -492,9 +498,9 @@ namespace Troy_Web_Property_Manager.Services
                 ? new Residence()
                 : application!.Residences.FirstOrDefault(r => r.Id == model.ResidenceId);
             if (residence is null) return Logged(ServiceResult.Missing(), "Save residence", id, user);
-            residence.Address = Clean(model.Address);
-            residence.LandlordName = Clean(model.LandlordName);
-            residence.LandlordPhone = Clean(model.LandlordPhone);
+            residence.Address = model.Address;
+            residence.LandlordName = model.LandlordName;
+            residence.LandlordPhone = model.LandlordPhone;
             residence.MoveInDate = model.MoveInDate;
             residence.MoveOutDate = model.MoveOutDate;
             if (model.ResidenceId is null) application!.Residences.Add(residence);
@@ -577,8 +583,34 @@ namespace Troy_Web_Property_Manager.Services
         /// It has to be an existing account in the Applicant role (managers can't be added). An applicant can only be on
         /// one open application per unit - the same rule Start follows - so someone who already has an open
         /// application for this unit can't be added to this one too.
+        /// <para>Like <see cref="StartAsync"/>, losing a race (a deadlock, or someone adding them or creating their
+        /// profile at the same moment) is retried; the retry sees what the other request did. Only if every attempt
+        /// loses do we ask them to try again.</para>
         /// </remarks>
         public async Task<ServiceResult> AddApplicantAsync(int id, AddApplicantViewModel model, CurrentUser user)
+        {
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return await AddApplicantOnceAsync(id, model, user);
+                }
+                catch (Exception ex) when (attempt < MaxRaceAttempts && (SqlErrors.IsUniqueViolation(ex) || SqlErrors.IsDeadlock(ex)))
+                {
+                    _logger.LogInformation("Adding an applicant to application {ApplicationId} by user {UserId} lost a race with another request; retrying.",
+                        id, user.Id);
+                    db.ChangeTracker.Clear();
+                }
+                catch (Exception ex) when (SqlErrors.IsUniqueViolation(ex) || SqlErrors.IsDeadlock(ex))
+                {
+                    db.ChangeTracker.Clear();
+                    return Logged(ServiceResult.Stale("Another application update was saved at the same time. Reload and try again."),
+                        "Add applicant", id, user);
+                }
+            }
+        }
+
+        private async Task<ServiceResult> AddApplicantOnceAsync(int id, AddApplicantViewModel model, CurrentUser user)
         {
             const string field = nameof(AddApplicantViewModel.Email);
             var (application, error) = await LoadEditableAsync(id, user);
@@ -596,49 +628,34 @@ namespace Troy_Web_Property_Manager.Services
                 return Logged(ServiceResult.Error("There's no applicant account with that email.", field), "Add applicant", id, user);
             }
 
-            try
+            // StartAsync also uses Serializable, so neither an added membership nor a new application can slip
+            // past the other's open-application check for this applicant and unit.
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+            if (await db.ApplicationApplicants.AnyAsync(m => m.RentalApplicationId == id && m.Applicant.UserId == userId))
             {
-                // StartAsync also uses Serializable, so neither an added membership nor a new application can slip
-                // past the other's open-application check for this applicant and unit.
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-                if (await db.ApplicationApplicants.AnyAsync(m => m.RentalApplicationId == id && m.Applicant.UserId == userId))
-                {
-                    return Logged(ServiceResult.Error("They're already on this application.", field), "Add applicant", id, user);
-                }
-                var hasOtherOpen = await db.RentalApplications.AnyAsync(a => a.Id != id && a.UnitId == application!.UnitId
-                    && OpenStatuses.Contains(a.Status) && a.ApplicationApplicants.Any(m => m.Applicant.UserId == userId));
-                if (hasOtherOpen)
-                {
-                    return Logged(ServiceResult.Error("They already have an open application for this unit.", field), "Add applicant", id, user);
-                }
+                return Logged(ServiceResult.Error("They're already on this application.", field), "Add applicant", id, user);
+            }
+            var hasOtherOpen = await db.RentalApplications.AnyAsync(a => a.Id != id && a.UnitId == application!.UnitId
+                && OpenStatuses.Contains(a.Status) && a.ApplicationApplicants.Any(m => m.Applicant.UserId == userId));
+            if (hasOtherOpen)
+            {
+                return Logged(ServiceResult.Error("They already have an open application for this unit.", field), "Add applicant", id, user);
+            }
 
-                application!.ApplicationApplicants.Add(new ApplicationApplicant
-                {
-                    Applicant = await GetOrCreateProfileAsync(userId),
-                    Added = _clock.Now,
-                    AddedByUser = user.Id
-                });
-                // The application row doesn't change otherwise, so force the status check: no adding to one that was just
-                // submitted.
-                GuardStatus(application);
-                var result = await SaveApplicationAsync();
-                if (!result.Succeeded) return Logged(result, "Add applicant", id, user);
-                await transaction.CommitAsync();
-                _logger.LogInformation("User {UserId} added user {AddedUserId} to application {ApplicationId}.", user.Id, userId, id);
-                return result;
-            }
-            catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
+            application!.ApplicationApplicants.Add(new ApplicationApplicant
             {
-                // Someone added them (or created their profile) at the same moment.
-                db.ChangeTracker.Clear();
-                return Logged(ServiceResult.Stale(), "Add applicant", id, user);
-            }
-            catch (Exception ex) when (SqlErrors.IsDeadlock(ex))
-            {
-                db.ChangeTracker.Clear();
-                return Logged(ServiceResult.Stale("Another application update was saved at the same time. Reload and try again."),
-                    "Add applicant", id, user);
-            }
+                Applicant = await GetOrCreateProfileAsync(userId),
+                Added = _clock.Now,
+                AddedByUser = user.Id
+            });
+            // The application row doesn't change otherwise, so force the status check: no adding to one that was just
+            // submitted.
+            GuardStatus(application);
+            var result = await SaveApplicationAsync();
+            if (!result.Succeeded) return Logged(result, "Add applicant", id, user);
+            await transaction.CommitAsync();
+            _logger.LogInformation("User {UserId} added user {AddedUserId} to application {ApplicationId}.", user.Id, userId, id);
+            return result;
         }
 
         /// <summary>

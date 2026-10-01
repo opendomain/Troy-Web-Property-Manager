@@ -242,6 +242,14 @@ namespace Troy_Web_Property_Manager.Services
                 db.ChangeTracker.Clear();
                 return ServiceResult.Error("This unit number already exists at the property.", nameof(model.UnitNumber));
             }
+            catch (DbUpdateException ex) when (model.Id is null && SqlErrors.IsReferenceConflict(ex))
+            {
+                // The property was removed between our check and this save; the FK stopped the insert.
+                _logger.LogWarning("Unit {UnitNumber} wasn't saved: property {PropertyId} was removed at the same time.",
+                    number, unit.PropertyId);
+                db.ChangeTracker.Clear();
+                return ServiceResult.Missing();
+            }
             if (model.Id is null) _logger.LogInformation("Unit {UnitId} added to property {PropertyId}.", unit.Id, unit.PropertyId);
             else _logger.LogInformation("Unit {UnitId} on property {PropertyId} updated.", unit.Id, unit.PropertyId);
             return ServiceResult.Ok(unit.Id);
