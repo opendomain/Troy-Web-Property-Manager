@@ -1,6 +1,7 @@
 using System.Data;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Rules;
@@ -36,11 +37,16 @@ namespace Troy_Web_Property_Manager.Services
     /// matches the version the page was loaded with, in the same transaction as the save. Saves to different sections
     /// never touch each other's version, so they don't interfere; a second save to the same section finds the version
     /// changed and is rejected as stale.</para>
+    /// <para>Every change is logged (see <see cref="Logged"/>): who did what to which application, and why it was
+    /// refused if it was. Only ids go in the log - never the applicant's details or the managers' notes.</para>
     /// </remarks>
-    public class ApplicationService(ApplicationDbContext db, BusinessClock? clock = null)
+    public class ApplicationService(ApplicationDbContext db, BusinessClock? clock = null, ILogger<ApplicationService>? logger = null)
     {
         // "Now" and "today" in the business's time zone (see BusinessClock). Tests that don't pass one get the server's.
         private readonly BusinessClock _clock = clock ?? BusinessClock.Local;
+
+        // Tests that don't pass a logger get one that discards everything.
+        private readonly ILogger<ApplicationService> _logger = logger ?? NullLogger<ApplicationService>.Instance;
 
         /// <summary>Section 1's field keys start with this, matching the input names on the application page.</summary>
         public const string ApplicantInformationPrefix = nameof(ApplicationEditorViewModel.ApplicantInformation) + ".";
@@ -104,6 +110,41 @@ namespace Troy_Web_Property_Manager.Services
             }
         }
 
+        /// <summary>
+        /// Logs how an action on an application turned out, and hands the result straight back so a method can end
+        /// with <c>return Logged(result, ...)</c>. Done and ordinary refusals (a rule said no) are Information; losing
+        /// to someone else's change, or asking for an application that doesn't exist or isn't yours, is a Warning -
+        /// the second can mean someone is trying ids.
+        /// </summary>
+        private ServiceResult Logged(ServiceResult result, string action, int applicationId, CurrentUser user)
+        {
+            if (result.Succeeded && result.Unresolved.Count > 0)
+            {
+                _logger.LogInformation("{Action} on application {ApplicationId} by user {UserId} saved with {ErrorCount} errors still to fix.",
+                    action, applicationId, user.Id, result.Unresolved.Count);
+            }
+            else if (result.Succeeded)
+            {
+                _logger.LogInformation("{Action} on application {ApplicationId} by user {UserId} succeeded.", action, applicationId, user.Id);
+            }
+            else if (result.Conflict)
+            {
+                _logger.LogWarning("{Action} on application {ApplicationId} by user {UserId} was rejected: someone else changed it first.",
+                    action, applicationId, user.Id);
+            }
+            else if (result.NotFound || result.Forbidden)
+            {
+                _logger.LogWarning("{Action} on application {ApplicationId} by user {UserId} was refused: {Reason}.", action, applicationId,
+                    user.Id, result.NotFound ? "it doesn't exist or they can't see it" : "their role can't do that");
+            }
+            else
+            {
+                _logger.LogInformation("{Action} on application {ApplicationId} by user {UserId} was refused: {Reason}", action, applicationId,
+                    user.Id, string.Join(" ", result.Errors.Values));
+            }
+            return result;
+        }
+
         // ---------------- Applicant ----------------
 
         /// <summary>
@@ -118,17 +159,31 @@ namespace Troy_Web_Property_Manager.Services
         /// </remarks>
         public async Task<ServiceResult> StartAsync(int unitId, CurrentUser user)
         {
+            ServiceResult result;
             try
             {
-                return await StartOnceAsync(unitId, user);
+                result = await StartOnceAsync(unitId, user);
             }
             catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
             {
                 // Another request (probably a double-click on Apply) beat us to creating the profile or application.
                 // Try again and we'll just pick up what it made.
+                _logger.LogInformation("User {UserId} applied for unit {UnitId} twice at once; picking up the other request's application.",
+                    user.Id, unitId);
                 db.ChangeTracker.Clear();
-                return await StartOnceAsync(unitId, user);
+                result = await StartOnceAsync(unitId, user);
             }
+
+            if (result.Succeeded)
+            {
+                _logger.LogInformation("User {UserId} opened application {ApplicationId} for unit {UnitId}.", user.Id, result.Id, unitId);
+            }
+            else
+            {
+                _logger.LogInformation("User {UserId} couldn't apply for unit {UnitId}: {Reason}", user.Id, unitId,
+                    result.NotFound ? "the unit doesn't exist." : string.Join(" ", result.Errors.Values));
+            }
+            return result;
         }
 
         private async Task<ServiceResult> StartOnceAsync(int unitId, CurrentUser user)
@@ -322,7 +377,7 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            if (TooLongToSave(model) is { } tooLong) return tooLong;
+            if (TooLongToSave(model) is { } tooLong) return Logged(tooLong, "Save applicant information", id, user);
 
             // This only saves to this application - other ones (like already submitted ones) aren't touched.
             var info = application!.ApplicantInformation ??= new ApplicantInformation();
@@ -345,7 +400,7 @@ namespace Troy_Web_Property_Manager.Services
             // If section 1 was already saved, the application row itself doesn't change, so force the status check.
             GuardStatus(application);
             var (saved, _) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ApplicantInformation, version));
-            return saved.Succeeded ? ServiceResult.Saved(remaining) : saved;
+            return Logged(saved.Succeeded ? ServiceResult.Saved(remaining) : saved, "Save applicant information", id, user);
         }
 
         /// <summary>
@@ -361,10 +416,11 @@ namespace Troy_Web_Property_Manager.Services
             application!.ResidenceHistorySaved = true;
             GuardStatus(application);
             var (saved, _) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ResidenceHistory, version));
-            if (!saved.Succeeded) return saved;
+            if (!saved.Succeeded) return Logged(saved, "Save residence history", id, user);
 
             var checks = CheckSections(application, unitHasActiveLease: false);
-            return ServiceResult.Saved([.. checks.ResidenceHistory, .. checks.Residences.SelectMany(r => r.Errors)]);
+            return Logged(ServiceResult.Saved([.. checks.ResidenceHistory, .. checks.Residences.SelectMany(r => r.Errors)]),
+                "Save residence history", id, user);
         }
 
         /// <summary>
@@ -395,13 +451,13 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            if (TooLongToSave(model) is { } tooLong) return tooLong;
+            if (TooLongToSave(model) is { } tooLong) return Logged(tooLong, "Save residence", id, user);
             // Look the residence up in this application's residences only, not by id across the whole table,
             // so a faked ResidenceId can't reach into another application.
             var residence = model.ResidenceId is null
                 ? new Residence()
                 : application!.Residences.FirstOrDefault(r => r.Id == model.ResidenceId);
-            if (residence is null) return ServiceResult.Missing();
+            if (residence is null) return Logged(ServiceResult.Missing(), "Save residence", id, user);
             residence.Address = Clean(model.Address);
             residence.LandlordName = Clean(model.LandlordName);
             residence.LandlordPhone = Clean(model.LandlordPhone);
@@ -410,7 +466,8 @@ namespace Troy_Web_Property_Manager.Services
             if (model.ResidenceId is null) application!.Residences.Add(residence);
             GuardStatus(application!);
             var (saved, next) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ResidenceHistory, model.SectionVersion));
-            return saved.Succeeded ? ServiceResult.Saved(SectionValidator.Validate(ToViewModel(residence)), residence.Id, next) : saved;
+            return Logged(saved.Succeeded ? ServiceResult.Saved(SectionValidator.Validate(ToViewModel(residence)), residence.Id, next) : saved,
+                "Save residence", id, user);
         }
 
         /// <summary>
@@ -423,14 +480,14 @@ namespace Troy_Web_Property_Manager.Services
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
             var residence = application!.Residences.FirstOrDefault(r => r.Id == residenceId);
-            if (residence is null) return ServiceResult.Missing();
+            if (residence is null) return Logged(ServiceResult.Missing(), "Remove residence", id, user);
             application.Residences.Remove(residence);
             db.Residences.Remove(residence);
             // If that was the last one, the section stays saved but now has the "add at least one" error, which blocks
             // Submit (see CheckSections).
             GuardStatus(application);
             var (saved, _) = await SaveSectionsAsync(id, SectionChangedMessage, (ApplicationSection.ResidenceHistory, version));
-            return saved;
+            return Logged(saved, "Remove residence", id, user);
         }
 
         /// <summary>
@@ -451,14 +508,14 @@ namespace Troy_Web_Property_Manager.Services
             var blockers = CheckSections(application!, await UnitHasActiveLeaseAsync(application!.UnitId)).Blockers;
             if (blockers.Count > 0)
             {
-                return ServiceResult.Error(string.Join(" ", blockers));
+                return Logged(ServiceResult.Error(string.Join(" ", blockers)), "Submit", id, user);
             }
             ChangeStatus(application, ApplicationStatus.Submitted, user);
             application.Submitted = _clock.Now;
             var (saved, _) = await SaveSectionsAsync(id, ChangedBeforeSubmitMessage,
                 (ApplicationSection.ApplicantInformation, applicantInformationVersion),
                 (ApplicationSection.ResidenceHistory, residenceHistoryVersion));
-            return saved;
+            return Logged(saved, "Submit", id, user);
         }
 
         // ---------------- Applicants on an application ----------------
@@ -485,15 +542,21 @@ namespace Troy_Web_Property_Manager.Services
                 where u.NormalizedEmail == normalized
                     && db.UserRoles.Any(ur => ur.UserId == u.Id && db.Roles.Any(r => r.Id == ur.RoleId && r.Name == AppRoles.Applicant))
                 select u.Id).FirstOrDefaultAsync();
-            if (userId is null) return ServiceResult.Error("There's no applicant account with that email.", field);
+            if (userId is null)
+            {
+                return Logged(ServiceResult.Error("There's no applicant account with that email.", field), "Add applicant", id, user);
+            }
 
             if (await db.ApplicationApplicants.AnyAsync(m => m.RentalApplicationId == id && m.Applicant.UserId == userId))
             {
-                return ServiceResult.Error("They're already on this application.", field);
+                return Logged(ServiceResult.Error("They're already on this application.", field), "Add applicant", id, user);
             }
             var hasOtherOpen = await db.RentalApplications.AnyAsync(a => a.Id != id && a.UnitId == application!.UnitId
                 && OpenStatuses.Contains(a.Status) && a.ApplicationApplicants.Any(m => m.Applicant.UserId == userId));
-            if (hasOtherOpen) return ServiceResult.Error("They already have an open application for this unit.", field);
+            if (hasOtherOpen)
+            {
+                return Logged(ServiceResult.Error("They already have an open application for this unit.", field), "Add applicant", id, user);
+            }
 
             application!.ApplicationApplicants.Add(new ApplicationApplicant
             {
@@ -504,16 +567,20 @@ namespace Troy_Web_Property_Manager.Services
             // The application row doesn't change otherwise, so force the status check: no adding to one that was just
             // submitted.
             GuardStatus(application);
+            ServiceResult result;
             try
             {
-                return await SaveApplicationAsync();
+                result = await SaveApplicationAsync();
             }
             catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
             {
                 // Someone added them (or created their profile) at the same moment.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Stale();
+                result = ServiceResult.Stale();
             }
+            if (!result.Succeeded) return Logged(result, "Add applicant", id, user);
+            _logger.LogInformation("User {UserId} added user {AddedUserId} to application {ApplicationId}.", user.Id, userId, id);
+            return result;
         }
 
         /// <summary>
@@ -527,15 +594,18 @@ namespace Troy_Web_Property_Manager.Services
             if (error is not null) return error;
             if (applicantId == application!.ApplicantId)
             {
-                return ServiceResult.Error("The applicant who started this application can't be removed.");
+                return Logged(ServiceResult.Error("The applicant who started this application can't be removed."), "Remove applicant", id, user);
             }
             var membership = await db.ApplicationApplicants
                 .FirstOrDefaultAsync(m => m.RentalApplicationId == id && m.ApplicantId == applicantId);
-            if (membership is null) return ServiceResult.Missing();
+            if (membership is null) return Logged(ServiceResult.Missing(), "Remove applicant", id, user);
 
             db.ApplicationApplicants.Remove(membership);
             GuardStatus(application);
-            return await SaveApplicationAsync();
+            var result = await SaveApplicationAsync();
+            if (!result.Succeeded) return Logged(result, "Remove applicant", id, user);
+            _logger.LogInformation("User {UserId} removed applicant {ApplicantId} from application {ApplicationId}.", user.Id, applicantId, id);
+            return result;
         }
 
         /// <summary>
@@ -547,13 +617,13 @@ namespace Troy_Web_Property_Manager.Services
         public async Task<ServiceResult> WithdrawAsync(int id, CurrentUser user)
         {
             var application = await Visible(user).FirstOrDefaultAsync(a => a.Id == id);
-            if (application is null) return ServiceResult.Missing();
+            if (application is null) return Logged(ServiceResult.Missing(), "Withdraw", id, user);
             if (user.IsManager || !ApplicationWorkflow.CanTransition((ApplicationStatus)application.Status, ApplicationStatus.Withdrawn))
             {
-                return ServiceResult.Error("This application can't be withdrawn.");
+                return Logged(ServiceResult.Error("This application can't be withdrawn."), "Withdraw", id, user);
             }
             ChangeStatus(application, ApplicationStatus.Withdrawn, user);
-            return await SaveApplicationAsync();
+            return Logged(await SaveApplicationAsync(), "Withdraw", id, user);
         }
 
         // ---------------- Property manager ----------------
@@ -613,17 +683,17 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         public async Task<ServiceResult> ClaimAsync(int id, CurrentUser user)
         {
-            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can claim applications.");
+            if (!user.IsManager) return Logged(ServiceResult.Forbid("Only property managers can claim applications."), "Claim", id, user);
             var application = await Visible(user).FirstOrDefaultAsync(a => a.Id == id);
-            if (application is null) return ServiceResult.Missing();
+            if (application is null) return Logged(ServiceResult.Missing(), "Claim", id, user);
             if (!ApplicationWorkflow.CanClaim((ApplicationStatus)application.Status))
             {
-                return ServiceResult.Error(application.Status == (long)ApplicationStatus.UnderReview
+                return Logged(ServiceResult.Error(application.Status == (long)ApplicationStatus.UnderReview
                     ? "This application has already been claimed."
-                    : "Only submitted applications can be claimed.");
+                    : "Only submitted applications can be claimed."), "Claim", id, user);
             }
             ChangeStatus(application, ApplicationStatus.UnderReview, user);
-            return await SaveApplicationAsync();
+            return Logged(await SaveApplicationAsync(), "Claim", id, user);
         }
 
         /// <summary>
@@ -633,15 +703,15 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         public async Task<ServiceResult> ReleaseAsync(int id, CurrentUser user)
         {
-            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can release applications.");
+            if (!user.IsManager) return Logged(ServiceResult.Forbid("Only property managers can release applications."), "Release", id, user);
             var application = await Visible(user).FirstOrDefaultAsync(a => a.Id == id);
-            if (application is null) return ServiceResult.Missing();
+            if (application is null) return Logged(ServiceResult.Missing(), "Release", id, user);
             if (!ApplicationWorkflow.CanRelease((ApplicationStatus)application.Status))
             {
-                return ServiceResult.Error("Only applications under review can be released.");
+                return Logged(ServiceResult.Error("Only applications under review can be released."), "Release", id, user);
             }
             ChangeStatus(application, ApplicationStatus.Submitted, user);
-            return await SaveApplicationAsync();
+            return Logged(await SaveApplicationAsync(), "Release", id, user);
         }
 
         /// <summary>
@@ -651,23 +721,25 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         public async Task<ServiceResult> ReviewAsync(int id, ReviewViewModel model, CurrentUser user)
         {
-            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can review applications.");
+            var action = $"Review ({model.Outcome})";
+            if (!user.IsManager) return Logged(ServiceResult.Forbid("Only property managers can review applications."), action, id, user);
 
             try
             {
-                return await ReviewInTransactionAsync(id, model, user);
+                return Logged(await ReviewInTransactionAsync(id, model, user), action, id, user);
             }
             catch (Exception ex) when (SqlErrors.IsDeadlock(ex))
             {
                 // Another review on the same unit or application got there first, and this one was rolled back.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Stale("Another review of this unit was saved at the same time. Reload the page and try again.");
+                return Logged(ServiceResult.Stale("Another review of this unit was saved at the same time. Reload the page and try again."),
+                    action, id, user);
             }
             catch (DbUpdateConcurrencyException)
             {
                 // The status changed after we read it (e.g. the applicant withdrew), so the transaction was rolled back.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Stale();
+                return Logged(ServiceResult.Stale(), action, id, user);
             }
         }
 
@@ -689,6 +761,7 @@ namespace Troy_Web_Property_Manager.Services
                 return ServiceResult.Error("This application is claimed by another property manager.");
             }
             var outcome = model.Outcome!.Value;
+            Lease? lease = null;
             // Same rule as ReviewViewModel.Validate. We check it again here because the service shouldn't trust whoever called it.
             if (ApplicationWorkflow.RequiresComment(outcome) && string.IsNullOrWhiteSpace(model.Comment))
             {
@@ -703,19 +776,25 @@ namespace Troy_Web_Property_Manager.Services
                     return ServiceResult.Error("This unit already has an active lease.");
                 }
                 var start = _clock.Today;
-                db.Leases.Add(new Lease
+                lease = new Lease
                 {
                     UnitId = application.UnitId,
                     RentalApplicationId = application.Id,
                     StartDate = start,
                     EndDate = LeaseRules.EndDateFor(start)
-                });
+                };
+                db.Leases.Add(lease);
             }
             // The lease and the status change (plus its history row) are saved and committed together - either it's
             // approved and has a lease, or neither happened.
             ChangeStatus(application, ApplicationWorkflow.StatusFor(outcome), user, outcome, model.Comment?.Trim());
             await db.SaveChangesAsync();
             await transaction.CommitAsync();
+            if (lease is not null)
+            {
+                _logger.LogInformation("Lease {LeaseId} created for unit {UnitId} from {StartDate:yyyy-MM-dd} to {EndDate:yyyy-MM-dd} (application {ApplicationId}).",
+                    lease.Id, lease.UnitId, lease.StartDate, lease.EndDate, id);
+            }
             return ServiceResult.Ok();
         }
 
@@ -798,15 +877,15 @@ namespace Troy_Web_Property_Manager.Services
         {
             const string changedMessage = "These notes were changed by someone else. Reload the page and try again.";
 
-            if (!user.IsManager) return ServiceResult.Forbid("Only property managers can edit notes.");
-            if (!await Visible(user).AnyAsync(a => a.Id == id)) return ServiceResult.Missing();
+            if (!user.IsManager) return Logged(ServiceResult.Forbid("Only property managers can edit notes."), "Save manager notes", id, user);
+            if (!await Visible(user).AnyAsync(a => a.Id == id)) return Logged(ServiceResult.Missing(), "Save manager notes", id, user);
 
             var note = await db.ManagerNotes.FirstOrDefaultAsync(n => n.RentalApplicationId == id);
             if (note is null)
             {
                 // The form thought there were notes, but they're gone - the row is never deleted, so this is a
                 // tampered or badly out-of-date form.
-                if (model.Version is not null) return ServiceResult.Stale(changedMessage);
+                if (model.Version is not null) return Logged(ServiceResult.Stale(changedMessage), "Save manager notes", id, user);
                 note = new ManagerNote { RentalApplicationId = id };
                 db.ManagerNotes.Add(note);
             }
@@ -829,15 +908,15 @@ namespace Troy_Web_Property_Manager.Services
             catch (DbUpdateConcurrencyException)
             {
                 db.ChangeTracker.Clear();
-                return ServiceResult.Stale(changedMessage);
+                return Logged(ServiceResult.Stale(changedMessage), "Save manager notes", id, user);
             }
             catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
             {
                 // Two managers added the first note at the same moment, and the primary key stopped the second one.
                 db.ChangeTracker.Clear();
-                return ServiceResult.Stale(changedMessage);
+                return Logged(ServiceResult.Stale(changedMessage), "Save manager notes", id, user);
             }
-            return ServiceResult.Ok();
+            return Logged(ServiceResult.Ok(), "Save manager notes", id, user);
         }
 
         // ---------------- List ----------------
@@ -1051,9 +1130,16 @@ namespace Troy_Web_Property_Manager.Services
                 .Include(a => a.ApplicantInformation)
                 .Include(a => a.Residences)
                 .FirstOrDefaultAsync(a => a.Id == id);
-            if (application is null) return (null, ServiceResult.Missing());
+            if (application is null)
+            {
+                _logger.LogWarning("User {UserId} tried to change application {ApplicationId}, which doesn't exist or they can't see.", user.Id, id);
+                return (null, ServiceResult.Missing());
+            }
             if (user.IsManager || !ApplicationWorkflow.IsEditable((ApplicationStatus)application.Status))
             {
+                // The page doesn't offer edits here, so this is an old tab - or a hand-made post.
+                _logger.LogWarning("User {UserId} tried to change application {ApplicationId}, which is {Status} and can't be edited.",
+                    user.Id, id, (ApplicationStatus)application.Status);
                 return (null, ServiceResult.Error("This application can no longer be edited."));
             }
             return (application, null);

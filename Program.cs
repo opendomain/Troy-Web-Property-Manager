@@ -182,10 +182,15 @@ namespace Troy_Web_Property_Manager
                 var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
                 // Applies any pending migrations and creates the database if it doesn't exist
+                var pending = (await dbContext.Database.GetPendingMigrationsAsync()).ToList();
                 await dbContext.Database.MigrateAsync();
                 //dbContext.Database.EnsureCreated();
+                if (pending.Count > 0)
+                {
+                    app.Logger.LogInformation("Applied {Count} database migrations: {Migrations}.", pending.Count, string.Join(", ", pending));
+                }
 
-                await AddRequiredDataToDatabaseAsync(scope);
+                await AddRequiredDataToDatabaseAsync(scope, app.Logger);
 
                 // The demo accounts all share a known password, so only seed them in Development.
                 if (app.Environment.IsDevelopment())
@@ -195,14 +200,14 @@ namespace Troy_Web_Property_Manager
             }
         }
 
-        private static async Task AddRequiredDataToDatabaseAsync(IServiceScope scope)
+        private static async Task AddRequiredDataToDatabaseAsync(IServiceScope scope, ILogger logger)
         {
             // Add required data to the database
             // Example: Add default roles, users, or any other necessary data
             // This method can be customized to add specific data to the database as needed
 
-            await SeedRolesAsync(scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>());
-            await SeedLookupsAsync(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
+            await SeedRolesAsync(scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>(), logger);
+            await SeedLookupsAsync(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), logger);
         }
 
         /// <summary>
@@ -210,7 +215,7 @@ namespace Troy_Web_Property_Manager
         /// without them - the Status rows back the RentalApplications.Status FK, and the unit types fill the dropdown.
         /// Only adds rows that are missing.
         /// </summary>
-        private static async Task SeedLookupsAsync(ApplicationDbContext dbContext)
+        private static async Task SeedLookupsAsync(ApplicationDbContext dbContext, ILogger logger)
         {
             // The Status ids have to match the ApplicationStatus enum, so we insert them explicitly
             // (the id column is an identity, hence IDENTITY_INSERT). Only the missing ones get added.
@@ -228,6 +233,7 @@ namespace Troy_Web_Property_Manager
                 await dbContext.SaveChangesAsync();
                 await dbContext.Database.ExecuteSqlRawAsync("SET IDENTITY_INSERT [Status] OFF");
                 await transaction.CommitAsync();
+                logger.LogInformation("Added application statuses: {Statuses}.", string.Join(", ", missingStatuses.Select(s => s.Name)));
             }
 
             // Unit types are matched by name. An inactive type stays on units that already have it,
@@ -241,20 +247,24 @@ namespace Troy_Web_Property_Manager
             ];
 
             var existingUnitTypes = await dbContext.UnitTypes.Select(t => t.Name).ToHashSetAsync();
-            dbContext.UnitTypes.AddRange(unitTypes
-                .Where(t => !existingUnitTypes.Contains(t.Name))
-                .Select(t => new UnitType { Name = t.Name, IsActive = t.IsActive }));
+            var missingUnitTypes = unitTypes.Where(t => !existingUnitTypes.Contains(t.Name)).ToList();
+            dbContext.UnitTypes.AddRange(missingUnitTypes.Select(t => new UnitType { Name = t.Name, IsActive = t.IsActive }));
             await dbContext.SaveChangesAsync();
+            if (missingUnitTypes.Count > 0)
+            {
+                logger.LogInformation("Added unit types: {UnitTypes}.", string.Join(", ", missingUnitTypes.Select(t => t.Name)));
+            }
         }
 
         /// <summary>Creates the two Identity roles if they're not there yet.</summary>
-        private static async Task SeedRolesAsync(RoleManager<IdentityRole> roleManager)
+        private static async Task SeedRolesAsync(RoleManager<IdentityRole> roleManager, ILogger logger)
         {
             foreach (var role in AppRoles.All)
             {
                 if (!await roleManager.RoleExistsAsync(role))
                 {
                     await roleManager.CreateAsync(new IdentityRole(role));
+                    logger.LogInformation("Added role {Role}.", role);
                 }
             }
         }

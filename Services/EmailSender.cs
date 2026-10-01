@@ -78,6 +78,7 @@ namespace Troy_Web_Property_Manager.Services
                 _logger.LogError("SendGrid failed to send to {Email}: {Status} {Body}", email, response.StatusCode, body);
                 throw new InvalidOperationException("Failed to send email.");
             }
+            _logger.LogInformation("Sent \"{Subject}\" email to {Email}.", subject, email);
         }
     }
 }
