@@ -14,6 +14,7 @@ namespace Troy_Web_Property_Manager.Tests
     {
         public const int Deadlock = 1205;
         public const int UniqueViolation = 2601;
+        public const int ReferenceConflict = 547;
 
         public static SqlException Create(int number)
         {
