@@ -1,6 +1,7 @@
 using System.Data;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
@@ -502,20 +503,39 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            // 4.b.ii / 4.e: both sections saved with no errors left, and the unit not leased. The Summary shows the
-            // same list and the page disables the button, but this is the check that actually matters. We leave any
-            // other open applications for the unit alone.
-            var blockers = CheckSections(application!, await UnitHasActiveLeaseAsync(application!.UnitId)).Blockers;
+            // Check section errors first without opening a transaction. The lease check must share a serializable
+            // transaction with the status/version writes below, so an approval can't lease the unit between the
+            // availability check and this submission. Other open applications for the unit are left as they are.
+            var blockers = CheckSections(application!, unitHasActiveLease: false).Blockers;
             if (blockers.Count > 0)
             {
                 return Logged(ServiceResult.Error(string.Join(" ", blockers)), "Submit", id, user);
             }
-            ChangeStatus(application, ApplicationStatus.Submitted, user);
-            application.Submitted = _clock.Now;
-            var (saved, _) = await SaveSectionsAsync(id, ChangedBeforeSubmitMessage,
-                (ApplicationSection.ApplicantInformation, applicantInformationVersion),
-                (ApplicationSection.ResidenceHistory, residenceHistoryVersion));
-            return Logged(saved, "Submit", id, user);
+
+            try
+            {
+                var (saved, _) = await SaveSectionsAsync(id, ChangedBeforeSubmitMessage, IsolationLevel.Serializable,
+                    async () =>
+                    {
+                        if (await UnitHasActiveLeaseAsync(application!.UnitId))
+                        {
+                            return ServiceResult.Error(SubmissionRules.UnitLeased);
+                        }
+                        ChangeStatus(application!, ApplicationStatus.Submitted, user);
+                        application!.Submitted = _clock.Now;
+                        return null;
+                    },
+                    (ApplicationSection.ApplicantInformation, applicantInformationVersion),
+                    (ApplicationSection.ResidenceHistory, residenceHistoryVersion));
+                return Logged(saved, "Submit", id, user);
+            }
+            catch (Exception ex) when (SqlErrors.IsDeadlock(ex))
+            {
+                // Submit and approval can lock the same unit while checking its lease; ask the applicant to retry.
+                db.ChangeTracker.Clear();
+                return Logged(ServiceResult.Stale("Another change to this unit was saved at the same time. Reload the page and try again."),
+                    "Submit", id, user);
+            }
         }
 
         // ---------------- Applicants on an application ----------------
@@ -1018,7 +1038,23 @@ namespace Troy_Web_Property_Manager.Services
         private async Task<(ServiceResult Result, Guid Version)> SaveSectionsAsync(int id, string staleMessage,
             params (ApplicationSection Section, Guid Expected)[] sections)
         {
-            await using var transaction = await db.Database.BeginTransactionAsync();
+            return await SaveSectionsAsync(id, staleMessage, IsolationLevel.ReadCommitted, null, sections);
+        }
+
+        /// <summary>
+        /// The overload with a pre-save check lets Submit check unit availability under the same serializable
+        /// transaction as its status change and section-version swaps.
+        /// </summary>
+        private async Task<(ServiceResult Result, Guid Version)> SaveSectionsAsync(int id, string staleMessage,
+            IsolationLevel isolationLevel, Func<Task<ServiceResult?>>? beforeSave,
+            params (ApplicationSection Section, Guid Expected)[] sections)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(isolationLevel);
+            if (beforeSave is not null && await beforeSave() is { } validationError)
+            {
+                return (validationError, Guid.Empty);
+            }
+
             var next = Guid.NewGuid();
             foreach (var (section, expected) in sections)
             {
