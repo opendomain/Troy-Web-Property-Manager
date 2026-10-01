@@ -21,7 +21,8 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public int ApplicationId { get; set; }
 
         /// <summary>Nullable so picking nothing gives a "Choose an outcome." error instead of quietly using a default.</summary>
-        [Required(ErrorMessage = "Choose an outcome.")] public ReviewOutcome? Outcome { get; set; }
+        [Required(ErrorMessage = "Choose an outcome."), EnumDataType(typeof(ReviewOutcome), ErrorMessage = "Choose a valid outcome.")]
+        public ReviewOutcome? Outcome { get; set; }
 
         /// <summary>Same 500-character limit as the history comment column.</summary>
         [StringLength(500)] public string? Comment { get; set; }

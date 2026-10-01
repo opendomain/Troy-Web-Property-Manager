@@ -6,10 +6,10 @@
 *@
 <div class="card mb-3" id="property-@Model.Id">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <div><strong>@Model.Name</strong> · <span class="text-muted">@Model.Address</span></div>
+        <div><i class="fa-solid fa-building me-2 text-primary" aria-hidden="true"></i><strong>@Model.Name</strong> · <span class="text-muted">@Model.Address</span></div>
         <div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" data-modal-url="@Url.Action("Edit", "Properties", new { id = Model.Id })">Edit</button>
-            <button type="button" class="btn btn-sm btn-outline-danger" data-modal-url="@Url.Action("Delete", "Properties", new { id = Model.Id })">Remove</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-modal-url="@Url.Action("Edit", "Properties", new { id = Model.Id })"><i class="fa-solid fa-pen me-1" aria-hidden="true"></i>Edit</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-modal-url="@Url.Action("Delete", "Properties", new { id = Model.Id })"><i class="fa-solid fa-trash-can me-1" aria-hidden="true"></i>Remove</button>
         </div>
     </div>
     <table class="table mb-0">
@@ -22,20 +22,20 @@
                 <tr>
                     <td>@unit.UnitNumber</td>
                     <td>@unit.Bedrooms</td>
-                    <td>@unit.MonthlyRent.ToString("C0")</td>
+                    <td>@unit.MonthlyRent.ToString("C")</td>
                     @* Inactive types still show on units that already have them. *@
                     <td>@unit.UnitTypeName @(unit.UnitTypeIsActive ? "" : "(inactive)")</td>
                     @* Worked out in SQL from today's lease dates (2.d) - not a stored flag. *@
                     <td>@(unit.IsLeased ? "Leased" : "Available")</td>
                     <td class="text-end">
-                        <button type="button" class="btn btn-sm btn-link" data-modal-url="@Url.Action("EditUnit", "Properties", new { id = unit.Id })">Edit</button>
-                        <button type="button" class="btn btn-sm btn-link text-danger" data-modal-url="@Url.Action("DeleteUnit", "Properties", new { id = unit.Id })">Remove</button>
+                        <button type="button" class="btn btn-sm btn-link" data-modal-url="@Url.Action("EditUnit", "Properties", new { id = unit.Id })"><i class="fa-solid fa-pen me-1" aria-hidden="true"></i>Edit</button>
+                        <button type="button" class="btn btn-sm btn-link text-danger" data-modal-url="@Url.Action("DeleteUnit", "Properties", new { id = unit.Id })"><i class="fa-solid fa-trash-can me-1" aria-hidden="true"></i>Remove</button>
                     </td>
                 </tr>
             }
         </tbody>
     </table>
     <div class="card-footer">
-        <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("EditUnit", "Properties", new { propertyId = Model.Id })">Add unit</button>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("EditUnit", "Properties", new { propertyId = Model.Id })"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i>Add unit</button>
     </div>
 </div>

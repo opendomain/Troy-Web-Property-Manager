@@ -26,7 +26,9 @@ namespace Troy_Web_Property_Manager.Services
 
         /// <summary>
         /// Error 547: a constraint conflict. On a DELETE that means a foreign key - some other row still points at
-        /// the one we tried to remove. (547 also covers CHECK constraints, but those don't fire on a delete.)
+        /// the one we tried to remove; on an INSERT, the row it points at is gone. (547 also covers CHECK constraints,
+        /// but those don't fire on a delete, and callers only use this on an insert whose checked values were
+        /// already validated.)
         /// </summary>
         public static bool IsReferenceConflict(Exception ex)
         {

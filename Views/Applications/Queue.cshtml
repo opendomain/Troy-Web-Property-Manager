@@ -1,0 +1,130 @@
+@model ReviewQueueViewModel
+@{
+    ViewData["Title"] = "Review queue";
+}
+<h1><i class="fa-solid fa-list-check me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
+
+@*
+    The review queue (property managers only). Submitted applications wait here until a manager claims one, which
+    moves it to Under Review so nobody else picks it up. Releasing puts it back. The controller and service check the
+    role and status again, so these buttons are only a convenience.
+*@
+
+<h2 class="h4 mt-4"><i class="fa-solid fa-user-check me-2 text-primary" aria-hidden="true"></i>My claims</h2>
+@if (Model.Mine.Count == 0)
+{
+    <p class="text-muted">You haven't claimed any applications.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Property / unit</th>
+                    <th scope="col">Applicant</th>
+                    <th scope="col">Submitted</th>
+                    <th scope="col">Claimed</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Mine)
+                {
+                    <tr>
+                        <td><a asp-action="Edit" asp-route-id="@item.Id">@item.Id</a></td>
+                        <td>@item.PropertyName · @item.UnitNumber</td>
+                        <td>@item.Applicant</td>
+                        @* Times are stored in server local time, so they're shown as-is. *@
+                        <td>@item.SubmittedAt?.ToString("g")</td>
+                        <td>@item.ClaimedAt?.ToString("g")</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-primary" asp-action="Edit" asp-route-id="@item.Id"><i class="fa-solid fa-folder-open me-1" aria-hidden="true"></i>Open</a>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-modal-url="@Url.Action("Release", new { id = item.Id })"><i class="fa-solid fa-arrow-rotate-left me-1" aria-hidden="true"></i>Release</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2 class="h4 mt-4"><i class="fa-solid fa-hourglass-half me-2 text-primary" aria-hidden="true"></i>Waiting for review</h2>
+@if (Model.Waiting.Count == 0)
+{
+    <p class="text-muted">Nothing is waiting. The queue is empty.</p>
+}
+else
+{
+    <p class="text-muted small">Oldest first.</p>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Property / unit</th>
+                    <th scope="col">Applicant</th>
+                    <th scope="col">Submitted</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Waiting)
+                {
+                    <tr>
+                        <td><a asp-action="Edit" asp-route-id="@item.Id">@item.Id</a></td>
+                        <td>@item.PropertyName · @item.UnitNumber</td>
+                        <td>@item.Applicant</td>
+                        <td>@item.SubmittedAt?.ToString("g")</td>
+                        <td class="text-end">
+                            @* asp-action adds the antiforgery token. Claiming takes you to the application page. *@
+                            <form asp-action="Claim" asp-route-id="@item.Id" method="post">
+                                <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-hand me-1" aria-hidden="true"></i>Claim</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2 class="h4 mt-4"><i class="fa-solid fa-users me-2 text-primary" aria-hidden="true"></i>Claimed by other managers</h2>
+@if (Model.ClaimedByOthers.Count == 0)
+{
+    <p class="text-muted">No other manager has an application claimed.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Property / unit</th>
+                    <th scope="col">Applicant</th>
+                    <th scope="col">Submitted</th>
+                    <th scope="col">Claimed by</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.ClaimedByOthers)
+                {
+                    <tr>
+                        <td><a asp-action="Edit" asp-route-id="@item.Id">@item.Id</a></td>
+                        <td>@item.PropertyName · @item.UnitNumber</td>
+                        <td>@item.Applicant</td>
+                        <td>@item.SubmittedAt?.ToString("g")</td>
+                        <td>@item.Reviewer <span class="small text-muted">· @item.ClaimedAt?.ToString("g")</span></td>
+                        <td class="text-end">
+                            @* Any manager can release a claim, so one never gets stuck if its manager is away. *@
+                            <button type="button" class="btn btn-sm btn-outline-secondary" data-modal-url="@Url.Action("Release", new { id = item.Id })"><i class="fa-solid fa-arrow-rotate-left me-1" aria-hidden="true"></i>Release</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

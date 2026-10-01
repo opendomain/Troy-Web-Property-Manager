@@ -1,0 +1,37 @@
+@model ApplicationEditorViewModel
+@*
+    Everyone on the application. Used on the application page and on its own from ApplicationsController.Applicants,
+    which site.js calls to redraw just this part after the Add/Remove modals save - hence the root element's id.
+
+    Any applicant on it can add another applicant or remove one (or leave) while it can still be edited (CanEdit). The
+    applicant who started it can't be removed. Managers and read-only applications just see the list. The buttons only
+    show what's allowed; the service checks it all again.
+*@
+<div id="application-applicants" class="mb-3">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="text-muted">Applicants:</span>
+        @foreach (var applicant in Model.Applicants)
+        {
+            <span class="badge text-bg-light border d-inline-flex align-items-center gap-1">
+                @applicant.Email
+                @if (applicant.IsStarter)
+                {
+                    <span class="text-muted fw-normal">(started it)</span>
+                }
+                @if (applicant.IsYou)
+                {
+                    <span class="text-muted fw-normal">(you)</span>
+                }
+                @if (Model.CanEdit && !applicant.IsStarter)
+                {
+                    <button type="button" class="btn btn-sm btn-link p-0 text-danger"
+                            data-modal-url="@Url.Action("RemoveApplicant", "Applications", new { id = Model.Id, applicantId = applicant.ApplicantId })"><i class="fa-solid @(applicant.IsYou ? "fa-right-from-bracket" : "fa-user-minus") me-1" aria-hidden="true"></i>@(applicant.IsYou ? "Leave" : "Remove")</button>
+                }
+            </span>
+        }
+        @if (Model.CanEdit)
+        {
+            <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("AddApplicant", "Applications", new { id = Model.Id })"><i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add applicant</button>
+        }
+    </div>
+</div>

@@ -50,6 +50,12 @@ namespace Troy_Web_Property_Manager.Tests.ViewModels
         }
 
         [Fact]
+        public void Review_UndefinedOutcome_IsInvalid()
+        {
+            Assert.Contains(nameof(ReviewViewModel.Outcome), ErrorFields(new ReviewViewModel { Outcome = (ReviewOutcome)99, Comment = "x" }));
+        }
+
+        [Fact]
         public void Review_CommentOver500Characters_IsInvalid()
         {
             Assert.Contains(nameof(ReviewViewModel.Comment),
@@ -126,6 +132,23 @@ namespace Troy_Web_Property_Manager.Tests.ViewModels
             }).ToList();
             Assert.Contains(nameof(ApplicantInformationViewModel.Name), fields);
             Assert.Contains(nameof(ApplicantInformationViewModel.Email), fields);
+        }
+
+        // ---------------- Manager notes ----------------
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("Called the landlord; reference was good.")]
+        public void ManagerNotes_BlankOrNormal_IsValid(string? notes)
+        {
+            Assert.Empty(Validate(new ManagerNotesViewModel { Notes = notes }));
+        }
+
+        [Fact]
+        public void ManagerNotes_Over2000Characters_IsInvalid()
+        {
+            Assert.Equal(new[] { nameof(ManagerNotesViewModel.Notes) }, ErrorFields(new ManagerNotesViewModel { Notes = new string('x', 2001) }));
         }
     }
 }

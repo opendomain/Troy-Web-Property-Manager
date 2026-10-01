@@ -16,19 +16,37 @@
 }
 <div class="d-flex justify-content-between align-items-start">
     <div>
-        <h1>@ViewData["Title"]</h1>
-        <p>@Model.UnitLabel · Status: <strong>@Model.Status</strong></p>
+        <h1><i class="fa-solid fa-file-signature me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
+        <p>@Model.UnitLabel · Status: <strong>@Model.Status.DisplayName()</strong></p>
+        @* Managers only - Reviewer is never filled in for applicants. *@
+        @if (Model.Reviewer is not null)
+        {
+            <p class="small text-muted">
+                Claimed by @(Model.ClaimedByMe ? "you" : Model.Reviewer) · @Model.ReviewClaimed?.ToString("g")
+            </p>
+        }
     </div>
-    <div>
-        @* Buttons that depend on role and status. Both open a modal filled with a partial from the controller
+    <div class="d-flex gap-2">
+        @* Buttons that depend on role and status. Most open a modal filled with a partial from the controller
            (site.js handles data-modal-url). The flags come from the server, and the actions check again anyway. *@
         @if (Model.CanWithdraw)
         {
-            <button type="button" class="btn btn-outline-danger" data-modal-url="@Url.Action("Withdraw", new { id = Model.Id })">Withdraw</button>
+            <button type="button" class="btn btn-outline-danger" data-modal-url="@Url.Action("Withdraw", new { id = Model.Id })"><i class="fa-solid fa-ban me-1" aria-hidden="true"></i>Withdraw</button>
+        }
+        @if (Model.CanClaim)
+        {
+            @* Claiming isn't destructive, so it's a plain post with no modal. asp-action adds the antiforgery token. *@
+            <form asp-action="Claim" asp-route-id="@Model.Id" method="post">
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-hand me-1" aria-hidden="true"></i>Claim for review</button>
+            </form>
+        }
+        @if (Model.CanRelease)
+        {
+            <button type="button" class="btn btn-outline-secondary" data-modal-url="@Url.Action("Release", new { id = Model.Id })"><i class="fa-solid fa-arrow-rotate-left me-1" aria-hidden="true"></i>Release</button>
         }
         @if (Model.CanReview)
         {
-            <button type="button" class="btn btn-primary" data-modal-url="@Url.Action("Review", new { id = Model.Id })">Review</button>
+            <button type="button" class="btn btn-primary" data-modal-url="@Url.Action("Review", new { id = Model.Id })"><i class="fa-solid fa-clipboard-check me-1" aria-hidden="true"></i>Review</button>
         }
     </div>
 </div>
@@ -37,9 +55,12 @@
 @if (Model.ReviewComment is not null)
 {
     <div class="alert @(Model.Status == ApplicationStatus.Returned ? "alert-warning" : "alert-danger")" role="alert">
-        <strong>Reviewer's comment:</strong> @Model.ReviewComment
+        <i class="fa-solid fa-comment me-2" aria-hidden="true"></i><strong>Reviewer's comment:</strong> @Model.ReviewComment
     </div>
 }
+
+@* Everyone on the application. Its own partial so the add/remove modals can refresh just this part. *@
+<partial name="_Applicants" model="Model" />
 
 <div class="row">
     <div class="@(Model.IsManager ? "col-lg-8" : "col-12")">
@@ -50,6 +71,11 @@
             @* Lets the POST know which section the button was clicked on. It only picks what to validate and show -
                permissions get worked out again on the server, so tampering with it gets you nothing. *@
             <input type="hidden" asp-for="Section" />
+            @* The Applicant Information version this page was loaded with. Continue (section 1) and Submit send it back,
+               and the save is rejected as stale if another applicant saved the section since. It's outside the
+               disabled fieldset, so it's posted from the Summary too. Residence History's version is inside
+               _ResidenceHistory so it refreshes with the residence list. *@
+            <input type="hidden" asp-for="ApplicantInformationVersion" />
 
             @* ModelOnly = errors that don't belong to a specific field (like "Add at least one prior residence" or
                "can no longer be edited"). Field errors show next to their fields in the section partials. *@
@@ -76,18 +102,25 @@
                     if (Model.Section != ApplicationSection.ApplicantInformation)
                     {
                         @* formnovalidate: Back skips client-side validation because it doesn't save. *@
-                        <button type="submit" name="command" value="back" class="btn btn-outline-secondary" formnovalidate>Back</button>
+                        <button type="submit" name="command" value="back" class="btn btn-outline-secondary" formnovalidate><i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back</button>
                     }
                     if (Model.Section != ApplicationSection.Summary)
                     {
-                        @* Continue: validate, save if it's valid, move on (4.b.i). *@
-                        <button type="submit" name="command" value="continue" class="btn btn-primary">Continue</button>
+                        @* Continue: save - even with errors - and move on if the section is clean (4.b.i).
+                           formnovalidate so the browser's validation shows messages but doesn't stop the save. *@
+                        <button type="submit" name="command" value="continue" class="btn btn-primary" formnovalidate>Continue<i class="fa-solid fa-arrow-right ms-1" aria-hidden="true"></i></button>
+                        @if (Model.SectionHasErrors(Model.Section))
+                        {
+                            @* The saved section still has errors, so Continue stays here. Next moves on without saving;
+                               the Summary will list what's left. *@
+                            <a class="btn btn-outline-primary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Next(Model.Section)">Next<i class="fa-solid fa-arrow-right ms-1" aria-hidden="true"></i></a>
+                        }
                     }
                     else
                     {
                         @* Submit only shows on the Summary and stays disabled until both sections are saved (4.b.ii).
                            The server checks the same thing, so re-enabling it in the browser won't help. *@
-                        <button type="submit" name="command" value="submit" class="btn btn-success" disabled="@(!Model.CanSubmit)">Submit</button>
+                        <button type="submit" name="command" value="submit" class="btn btn-success" disabled="@(!Model.CanSubmit)"><i class="fa-solid fa-paper-plane me-1" aria-hidden="true"></i>Submit</button>
                     }
                 }
                 else
@@ -97,11 +130,11 @@
                        through the sections without posting to anything they're not allowed to use. *@
                     if (Model.Section != ApplicationSection.ApplicantInformation)
                     {
-                        <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Previous(Model.Section)">Back</a>
+                        <a class="btn btn-outline-secondary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Previous(Model.Section)"><i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back</a>
                     }
                     if (Model.Section != ApplicationSection.Summary)
                     {
-                        <a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Next(Model.Section)">Next</a>
+                        <a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id" asp-route-section="@ApplicationWorkflow.Next(Model.Section)">Next<i class="fa-solid fa-arrow-right ms-1" aria-hidden="true"></i></a>
                     }
                 }
             </div>
@@ -114,6 +147,9 @@
            rows plus user emails) that this page's view model doesn't have. _ViewImports turns on the <vc:...> tag.
            The component also turns away non-managers on its own, so even without this if, nothing would leak. *@
         <div class="col-lg-4">
+            @* Private manager notes. Also a view component, so the notes never go into this page's view model -
+               that model is what applicants get. It renders nothing for non-managers too. *@
+            <vc:manager-notes application-id="Model.Id" />
             <vc:application-history application-id="Model.Id" />
         </div>
     }

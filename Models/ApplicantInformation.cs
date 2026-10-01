@@ -4,6 +4,10 @@ namespace Troy_Web_Property_Manager.Models;
 /// The Applicant Information section of one application (name, phone, email, current address).
 /// Each application has its own copy, so once it's submitted it doesn't change behind our backs.
 /// </summary>
+/// <remarks>
+/// It can be saved with errors and fixed later (blank fields are stored as ""). Submit is blocked until
+/// <c>ApplicantInformationViewModel</c>'s rules all pass.
+/// </remarks>
 public partial class ApplicantInformation
 {
     /// <summary>Doubles as the primary key, so it's one row per application.</summary>

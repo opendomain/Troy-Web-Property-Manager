@@ -33,8 +33,9 @@ namespace Troy_Web_Property_Manager.Tests.Data
         }
 
         [Fact]
-        public async Task A_residence_cannot_end_before_it_starts()
+        public async Task A_residence_can_be_stored_with_bad_dates_to_fix_later()
         {
+            // CK_Residence_Dates was dropped: residences save with errors now, and the rules block Submit instead.
             var applicationId = await StartApplicationAsync();
             var db = _db.CreateContext();
             db.Residences.Add(new Residence
@@ -46,6 +47,30 @@ namespace Troy_Web_Property_Manager.Tests.Data
                 MoveInDate = new DateOnly(2024, 5, 1),
                 MoveOutDate = new DateOnly(2024, 4, 30)
             });
+            db.Residences.Add(new Residence { RentalApplicationId = applicationId, Address = "", LandlordName = "", LandlordPhone = "" });
+
+            await db.SaveChangesAsync();
+        }
+
+        [Fact]
+        public async Task Under_review_needs_a_reviewer_and_claim_time()
+        {
+            var applicationId = await StartApplicationAsync();
+            var db = _db.CreateContext();
+            var application = await db.RentalApplications.SingleAsync(a => a.Id == applicationId);
+            application.Status = (long)ApplicationStatus.UnderReview;
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+
+        [Fact]
+        public async Task Only_under_review_can_have_a_reviewer()
+        {
+            var applicationId = await StartApplicationAsync();
+            var db = _db.CreateContext();
+            var application = await db.RentalApplications.SingleAsync(a => a.Id == applicationId);
+            application.ReviewerUser = ManagerUser.Id;
+            application.ReviewClaimed = DateTime.Now;
 
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }

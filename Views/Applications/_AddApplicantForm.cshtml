@@ -1,0 +1,26 @@
+@model AddApplicantViewModel
+@* data-modal-form: site.js posts this with fetch, then closes the modal and refreshes #application-applicants. *@
+@*
+    Modal for adding another applicant to the application by their account email. If they can't be added (no such
+    applicant, already on it, already applying for this unit), the controller sends this back with the reason under
+    Email.
+*@
+<form asp-controller="Applications" asp-action="AddApplicant" asp-route-id="@Model.ApplicationId" method="post" data-modal-form>
+    <div class="modal-header">
+        <h5 class="modal-title">Add applicant</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <div class="modal-body">
+        <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+        <p class="text-muted small">They need an applicant account. Once added, they can see and edit this application.</p>
+        <div class="mb-3">
+            <label asp-for="Email" class="form-label"></label>
+            <input asp-for="Email" class="form-control" autocomplete="off" />
+            <span asp-validation-for="Email" class="text-danger"></span>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add</button>
+    </div>
+</form>

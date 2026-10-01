@@ -21,8 +21,12 @@ namespace Troy_Web_Property_Manager.Rules
             [ApplicationStatus.Draft] = [ApplicationStatus.Submitted, ApplicationStatus.Withdrawn],
             // Returned → Submitted is the "fix it and resubmit" path (Challenge a).
             [ApplicationStatus.Returned] = [ApplicationStatus.Submitted, ApplicationStatus.Withdrawn],
-            // The three review outcomes (5.a), plus the applicant pulling out while it's waiting for review.
-            [ApplicationStatus.Submitted] = [ApplicationStatus.Approved, ApplicationStatus.Returned, ApplicationStatus.Denied, ApplicationStatus.Withdrawn],
+            // Submitted means it's waiting in the review queue. A manager has to claim it (Under Review) before
+            // reviewing it, and the applicant can still pull out.
+            [ApplicationStatus.Submitted] = [ApplicationStatus.UnderReview, ApplicationStatus.Withdrawn],
+            // The three review outcomes (5.a), releasing it back to the queue, or the applicant pulling out.
+            [ApplicationStatus.UnderReview] = [ApplicationStatus.Approved, ApplicationStatus.Returned, ApplicationStatus.Denied,
+                ApplicationStatus.Submitted, ApplicationStatus.Withdrawn],
             [ApplicationStatus.Approved] = [],
             [ApplicationStatus.Denied] = [],
             [ApplicationStatus.Withdrawn] = []
@@ -49,10 +53,25 @@ namespace Troy_Web_Property_Manager.Rules
             return status is ApplicationStatus.Draft or ApplicationStatus.Returned;
         }
 
-        /// <summary>Managers can only review a Submitted application (5.a).</summary>
+        /// <summary>
+        /// Managers can only review an application they've claimed (5.a). This is the status half of the rule; the
+        /// service also checks the claim is theirs.
+        /// </summary>
         public static bool CanReview(ApplicationStatus status)
         {
+            return status == ApplicationStatus.UnderReview;
+        }
+
+        /// <summary>Only a Submitted application is waiting in the review queue, so that's the only one a manager can claim.</summary>
+        public static bool CanClaim(ApplicationStatus status)
+        {
             return status == ApplicationStatus.Submitted;
+        }
+
+        /// <summary>A claimed (Under Review) application can be released back to the queue.</summary>
+        public static bool CanRelease(ApplicationStatus status)
+        {
+            return status == ApplicationStatus.UnderReview;
         }
 
         /// <summary>The status a review outcome leads to. Throws on anything unexpected, since that'd be a bug.</summary>

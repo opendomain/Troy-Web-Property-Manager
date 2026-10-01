@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Identity.UI.Services;
+﻿using System.Net;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.Extensions.Options;
 using SendGrid;
 using SendGrid.Helpers.Mail;
@@ -39,8 +40,9 @@ namespace Troy_Web_Property_Manager.Services
             {
                 if (_environment.IsDevelopment())
                 {
+                    // Decoded, so a link in it can be copied straight from the log (the HTML has &amp; for &).
                     _logger.LogWarning("SendGrid isn't configured, so this email wasn't sent. To {Email}: {Subject}\n{Body}",
-                        email, subject, htmlMessage);
+                        email, subject, WebUtility.HtmlDecode(htmlMessage));
                     return;
                 }
                 throw new InvalidOperationException("SendGrid isn't configured (SendGrid:ApiKey is missing).");
@@ -77,6 +79,7 @@ namespace Troy_Web_Property_Manager.Services
                 _logger.LogError("SendGrid failed to send to {Email}: {Status} {Body}", email, response.StatusCode, body);
                 throw new InvalidOperationException("Failed to send email.");
             }
+            _logger.LogInformation("Sent \"{Subject}\" email to {Email}.", subject, email);
         }
     }
 }

@@ -11,15 +11,27 @@
     Residences are only added, edited and removed through the modal (4.c) - nothing here posts residence fields.
     Read-only (4.d): when IsReadOnly is true the Add/Edit/Remove buttons just don't render, and the modal actions
     return 404 on a locked application, so adding the buttons back by hand won't do anything.
+
+    Errors: residences can be saved with errors, so each one's errors (from the service, same rules as the modal) show
+    in a row under it, and the section's own error (no residences) shows above the table. They only get filled in
+    while the applicant can still edit, so managers never see them.
 *@
 <div id="residence-history">
+    @* Residence History's version as of this render. It's in here, not in Edit.cshtml, so when a residence modal saves
+       and this part is redrawn, the version is current too - otherwise this applicant's own residence saves would make
+       their Continue or Submit look stale. *@
+    <input type="hidden" asp-for="ResidenceHistoryVersion" />
     <div class="d-flex justify-content-between align-items-center">
-        <h4>Residence history</h4>
+        <h4><i class="fa-solid fa-house-user me-2 text-primary" aria-hidden="true"></i>Residence history</h4>
         @if (!Model.IsReadOnly)
         {
-            <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("Residence", "Applications", new { id = Model.Id })">Add residence</button>
+            <button type="button" class="btn btn-sm btn-outline-primary" data-modal-url="@Url.Action("Residence", "Applications", new { id = Model.Id })"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i>Add residence</button>
         }
     </div>
+    @foreach (var error in Model.ResidenceHistoryErrors)
+    {
+        <div class="text-danger" role="alert">@error.Message</div>
+    }
     @if (Model.Residences.Count == 0)
     {
         <p class="text-muted">No prior residences added yet.</p>
@@ -50,11 +62,25 @@
                             <td class="text-end text-nowrap">
                                 @if (!Model.IsReadOnly)
                                 {
-                                    <button type="button" class="btn btn-sm btn-link" data-modal-url="@Url.Action("Residence", "Applications", new { id = Model.Id, residenceId = residence.ResidenceId })">Edit</button>
-                                    <button type="button" class="btn btn-sm btn-link text-danger" data-modal-url="@Url.Action("DeleteResidence", "Applications", new { id = Model.Id, residenceId = residence.ResidenceId })">Remove</button>
+                                    <button type="button" class="btn btn-sm btn-link" data-modal-url="@Url.Action("Residence", "Applications", new { id = Model.Id, residenceId = residence.ResidenceId })"><i class="fa-solid fa-pen me-1" aria-hidden="true"></i>Edit</button>
+                                    <button type="button" class="btn btn-sm btn-link text-danger" data-modal-url="@Url.Action("DeleteResidence", "Applications", new { id = Model.Id, residenceId = residence.ResidenceId })"><i class="fa-solid fa-trash-can me-1" aria-hidden="true"></i>Remove</button>
                                 }
                             </td>
                         </tr>
+                        @if (residence.Errors.Count > 0)
+                        {
+                            @* border-top-0 so it reads as part of the residence above it. *@
+                            <tr>
+                                <td colspan="6" class="border-top-0 pt-0">
+                                    <ul class="text-danger small mb-0" role="alert">
+                                        @foreach (var error in residence.Errors)
+                                        {
+                                            <li>@error.Message</li>
+                                        }
+                                    </ul>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>

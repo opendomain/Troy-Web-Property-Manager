@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
 using Troy_Web_Property_Manager.ViewModels;
@@ -9,6 +10,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
     public sealed class PropertyServiceTests : IDisposable
     {
         private readonly TestDatabase _db = new();
+        private readonly TestLogger<PropertyService> _log = new();
 
         public void Dispose()
         {
@@ -17,7 +19,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
 
         private PropertyService Service()
         {
-            return new(_db.CreateContext());
+            return new(_db.CreateContext(), logger: _log);
         }
 
         private static void AssertOk(ServiceResult result)
@@ -176,6 +178,18 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task SaveUnit_PropertyRemovedDuringSave_IsNotFound()
+        {
+            // The FK stops the insert when the property goes between the existence check and the save.
+            var service = new PropertyService(_db.CreateContext(new FakeSqlErrors.OnSave(FakeSqlErrors.ReferenceConflict)), logger: _log);
+
+            var result = await service.SaveUnitAsync(NewUnit());
+
+            Assert.True(result.NotFound);
+            Assert.DoesNotContain(await _db.CreateContext().Units.ToListAsync(), u => u.UnitNumber == "201");
+        }
+
+        [Fact]
         public async Task Database_RejectsDuplicateUnitNumberAtProperty()
         {
             var db = _db.CreateContext();
@@ -237,6 +251,73 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             Assert.Single(await Service().GetAvailableUnitsAsync(_db.PropertyId, minBedrooms: 2));
             Assert.Empty(await Service().GetAvailableUnitsAsync(9999, minBedrooms: 1));
+        }
+
+        /// <summary>
+        /// Adds a second property so every sort has something to do, including ties. The four units, by label:
+        /// "R101" Riverside 101 (2 bed, $1500, Apartment), "R102" Riverside 102 (1 bed, $1200, Apartment),
+        /// "BA1" Birch Court A1 (3 bed, $2100, Loft), "BA2" Birch Court A2 (1 bed, $1200, Apartment).
+        /// </summary>
+        private async Task<Dictionary<string, int>> SortableUnitsAsync()
+        {
+            var db = _db.CreateContext();
+            var birch = new Property { Name = "Birch Court", Address = "2 Birch Rd" };
+            var a1 = new Unit { UnitNumber = "A1", Bedrooms = 3, MonthlyRent = 2100m, UnitTypeId = _db.InactiveUnitTypeId, Property = birch };
+            var a2 = new Unit { UnitNumber = "A2", Bedrooms = 1, MonthlyRent = 1200m, UnitTypeId = _db.ActiveUnitTypeId, Property = birch };
+            db.AddRange(a1, a2);
+            await db.SaveChangesAsync();
+            return new() { ["R101"] = _db.UnitId, ["R102"] = _db.SecondUnitId, ["BA1"] = a1.Id, ["BA2"] = a2.Id };
+        }
+
+        [Theory]
+        // Default: property, then unit number.
+        [InlineData(UnitSortColumn.Property, SortDirection.Asc, "BA1 BA2 R101 R102")]
+        [InlineData(UnitSortColumn.Property, SortDirection.Desc, "R102 R101 BA2 BA1")]
+        // Ties (two 1-bedroom units, two at $1200, three Apartments) stay in property/unit order in both directions.
+        [InlineData(UnitSortColumn.Bedrooms, SortDirection.Asc, "BA2 R102 R101 BA1")]
+        [InlineData(UnitSortColumn.Bedrooms, SortDirection.Desc, "BA1 R101 BA2 R102")]
+        [InlineData(UnitSortColumn.Rent, SortDirection.Asc, "BA2 R102 R101 BA1")]
+        [InlineData(UnitSortColumn.Rent, SortDirection.Desc, "BA1 R101 BA2 R102")]
+        [InlineData(UnitSortColumn.Type, SortDirection.Asc, "BA2 R101 R102 BA1")]
+        [InlineData(UnitSortColumn.Type, SortDirection.Desc, "BA1 BA2 R101 R102")]
+        public async Task AvailableUnits_SortsByEachColumn(UnitSortColumn sort, SortDirection dir, string expected)
+        {
+            var units = await SortableUnitsAsync();
+
+            var result = await Service().GetAvailableUnitsAsync(sort: sort, dir: dir);
+
+            Assert.Equal(expected.Split(' ').Select(label => units[label]), result.Select(u => u.Id));
+        }
+
+        [Fact]
+        public async Task AvailableUnits_SortsWithinTheFilters()
+        {
+            var units = await SortableUnitsAsync();
+
+            var result = await Service().GetAvailableUnitsAsync(_db.PropertyId, minBedrooms: 1, UnitSortColumn.Rent, SortDirection.Desc);
+
+            Assert.Equal(new[] { units["R101"], units["R102"] }, result.Select(u => u.Id));
+        }
+
+        // ---------------- Logging ----------------
+
+        [Fact]
+        public async Task Logs_AddingAndRemovingAUnit()
+        {
+            var saved = await Service().SaveUnitAsync(NewUnit("301"));
+            AssertOk(saved);
+            AssertOk(await Service().DeleteUnitAsync(saved.Id));
+
+            Assert.True(_log.Has(LogLevel.Information, $"Unit {saved.Id} added to property {_db.PropertyId}."));
+            Assert.True(_log.Has(LogLevel.Information, $"Unit {saved.Id} removed from property {_db.PropertyId}."));
+        }
+
+        [Fact]
+        public async Task Logs_AWarning_WhenAnInactiveTypeIsPosted()
+        {
+            Assert.False((await Service().SaveUnitAsync(NewUnit("301", _db.InactiveUnitTypeId))).Succeeded);
+
+            Assert.True(_log.Has(LogLevel.Warning, $"unit type {_db.InactiveUnitTypeId} is inactive or doesn't exist."));
         }
     }
 }

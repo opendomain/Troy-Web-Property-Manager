@@ -3,9 +3,11 @@
 // - Any element with data-modal-url loads that URL (a partial view) into the shared #app-modal.
 // - A form inside the modal with data-modal-form is posted with fetch:
 //     * HTML response (200, 422 or 409) -> validation failed, or someone else changed the data first;
-//                         the partial is re-rendered in place with the message.
+//                         the partial is re-rendered in place with the message. A 200 partial whose form has
+//                         data-refresh-target/url was saved with errors: it stays open and that region is redrawn.
 //     * JSON response  -> { success, refreshTarget, refreshUrl }: close the modal, then reload
 //                         refreshTarget from refreshUrl, or the whole page when no target is given.
+//                         { success, redirectUrl } goes to that page instead (AppController.ModalRedirect).
 // - Buttons with data-confirm ask before submitting.
 //
 // This is here for Technical 1.b: load modals from partial views the controllers return. If the form doesn't
@@ -111,6 +113,11 @@
     // The happy path: close the modal and refresh whatever changed. The server tells us which region (a CSS selector)
     // and the URL of a partial to redraw it, so only that part of the page updates.
     async function refresh(result) {
+        // AppController.ModalRedirect: this page can't be shown any more (e.g. the user left the application).
+        if (result.redirectUrl) {
+            window.location.assign(result.redirectUrl);
+            return;
+        }
         const target = result.refreshTarget && document.querySelector(result.refreshTarget);
         if (!target || !result.refreshUrl) {
             window.location.reload();
@@ -166,9 +173,10 @@
         event.preventDefault();
 
         // Check in the browser first (same DataAnnotations rules, through jQuery unobtrusive) so obvious mistakes
-        // don't need a round trip. The server checks again no matter what.
+        // don't need a round trip. The server checks again no matter what. Forms marked data-save-invalid (the
+        // residence form) save even with errors, so they skip this and the server sends the errors back.
         const $ = window.jQuery;
-        if ($ && $.fn.valid && !$(form).valid()) {
+        if (!form.hasAttribute('data-save-invalid') && $ && $.fn.valid && !$(form).valid()) {
             return;
         }
 
@@ -189,7 +197,13 @@
             } else if ((response.ok || response.status === 422 || response.status === 409) && type.includes('text/html')) {
                 // 422 means it didn't validate (AppController.ModalInvalid); 409 means someone else got there first
                 // (AppController.ModalFailed). Either way, redraw the partial - it has the message in it.
+                // A 200 partial means it saved but still has errors: the modal stays open with them, and if the form
+                // says which region changed (data-refresh-*), redraw that behind the modal too.
                 showContent(await response.text());
+                const saved = content.querySelector('form[data-refresh-target][data-refresh-url]');
+                if (response.ok && saved) {
+                    await refresh({ refreshTarget: saved.dataset.refreshTarget, refreshUrl: saved.dataset.refreshUrl });
+                }
             } else {
                 showContent(errorHtml('Something went wrong. Please close this dialog and try again.'));
             }
