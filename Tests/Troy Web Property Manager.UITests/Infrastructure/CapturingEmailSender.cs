@@ -15,11 +15,22 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     public sealed partial class CapturingEmailSender : IEmailSender
     {
         private readonly ConcurrentQueue<SentEmail> _sent = new();
+        private readonly ConcurrentDictionary<string, bool> _failFor = new(StringComparer.OrdinalIgnoreCase);
 
         public Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
+            if (_failFor.ContainsKey(email)) throw new InvalidOperationException($"Simulated send failure to {email}.");
             _sent.Enqueue(new SentEmail(email, subject, htmlMessage));
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Makes every send to <paramref name="to"/> throw, the way SendGrid does when it's down or refuses the
+        /// message. Per address, so tests running against the shared app aren't affected.
+        /// </summary>
+        public void FailFor(string to)
+        {
+            _failFor[to] = true;
         }
 
         /// <summary>Every email sent to <paramref name="to"/>, oldest first.</summary>

@@ -29,6 +29,32 @@ namespace Troy_Web_Property_Manager.UITests.Tests
         }
 
         [Fact]
+        public void SignUp_WhenTheEmailCantBeSent_ShowsTheConfirmationLinkOnThePage()
+        {
+            using var browser = app.NewBrowser();
+            var user = new TestUser($"nomail-{Guid.NewGuid().ToString("N")[..10]}@uitest.local", UiFixture.Password, AppRoles.Applicant);
+            app.Emails.FailFor(user.Email);
+
+            new RegisterPage(browser).Open().Submit(user.Email, user.Password, role: user.Role);
+            browser.WaitUntil(() => browser.PathAndQuery.StartsWith("/Identity/Account/RegisterConfirmation"), "the registration confirmation page");
+
+            // The account is kept, and the link the email would have carried is shown instead.
+            browser.WaitForText($"We couldn't send a confirmation email to {user.Email}.");
+            Assert.Empty(app.Emails.To(user.Email));
+            var link = browser.Driver.FindElement(By.LinkText("Confirm your account")).GetAttribute("href")!;
+
+            // The link comes from one-time TempData, so it isn't there on a reload (or for anyone with just the URL).
+            browser.Driver.Navigate().Refresh();
+            browser.WaitForText($"We sent a confirmation email to {user.Email}.");
+            Assert.Empty(browser.Driver.FindElements(By.LinkText("Confirm your account")));
+
+            browser.Driver.Navigate().GoToUrl(link);
+            browser.WaitForText("Thank you for confirming your email.");
+            browser.LogInAs(user);
+            Assert.Contains("My applications", new NavBar(browser).Links);
+        }
+
+        [Fact]
         public void LogIn_BeforeConfirmingTheEmail_IsRefused()
         {
             using var browser = app.NewBrowser();
