@@ -16,7 +16,8 @@ namespace Troy_Web_Property_Manager.Services
     /// With no API key configured (e.g. a fresh clone), there's no client. SendGridClient throws on an empty key, and
     /// since this is created by DI that would take down every page that injects it (Register included). Instead, in
     /// Development we log the email so you can still click the confirmation link; anywhere else we throw from
-    /// <see cref="SendEmailAsync"/>, which Register catches and turns into a friendly message.
+    /// <see cref="SendEmailAsync"/>, and Register catches that and shows the confirmation link on the
+    /// RegisterConfirmation page instead.
     /// </remarks>
     public class EmailSender : IEmailSender
     {

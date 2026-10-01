@@ -1,0 +1,22 @@
+@page
+@model Troy_Web_Property_Manager.Areas.Identity.Pages.Account.RegisterConfirmationModel
+@{
+    ViewData["Title"] = "Register confirmation";
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.ConfirmationLink is not null)
+{
+    @* The email couldn't be sent, so Register passed the link along to show here instead. *@
+    <div class="alert alert-warning" role="alert">
+        We couldn't send a confirmation email to <strong>@Model.Email</strong>.
+    </div>
+    <p>
+        <a class="btn btn-primary" href="@Model.ConfirmationLink">Confirm your account</a>
+    </p>
+}
+else
+{
+    <p>We sent a confirmation email to <strong>@Model.Email</strong>. Please check your inbox and click the link to confirm your account.</p>
+}
