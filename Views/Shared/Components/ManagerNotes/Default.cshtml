@@ -1,0 +1,29 @@
+@model ManagerNotesViewModel
+@*
+    The view for ManagerNotesViewComponent: property managers' private notes on an application. Managers only - the
+    component and the service both return nothing for anyone else, so this never renders for an applicant.
+    ApplicationsController.ManagerNotes also returns this on its own to refresh the panel after the modal saves, which
+    is why the root element has the id the controller uses as its refresh target.
+    Notes go out through @, so they're HTML-encoded; the CSS class keeps the line breaks.
+*@
+<div id="manager-notes" class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fa-solid fa-note-sticky me-2" aria-hidden="true"></i>Manager notes <span class="badge text-bg-secondary">Private</span></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-modal-url="@Url.Action("EditManagerNotes", "Applications", new { id = Model.ApplicationId })"><i class="fa-solid fa-pen me-1" aria-hidden="true"></i>Edit</button>
+    </div>
+    <div class="card-body">
+        @if (string.IsNullOrWhiteSpace(Model.Notes))
+        {
+            <p class="text-muted mb-0">No notes yet.</p>
+        }
+        else
+        {
+            <div class="manager-notes-text">@Model.Notes</div>
+        }
+        @if (Model.UpdatedAt is not null)
+        {
+            @* Saved in server local time, so shown as-is (same as the history panel). *@
+            <div class="small text-muted mt-2">Last updated by @Model.UpdatedBy · @Model.UpdatedAt.Value.ToString("g")</div>
+        }
+    </div>
+</div>

@@ -49,7 +49,8 @@ namespace Troy_Web_Property_Manager.ViewModels
     /// </para>
     ///
     /// <para>
-    /// <see cref="CanSubmit"/>, <see cref="CanWithdraw"/> and <see cref="CanReview"/> are calculated from the saved
+    /// <see cref="CanSubmit"/>, <see cref="CanWithdraw"/>, <see cref="CanReview"/>, <see cref="CanClaim"/> and
+    /// <see cref="CanRelease"/> are calculated from the saved
     /// flags and the workflow rules (<see cref="ApplicationWorkflow"/>) rather than set separately, so the buttons
     /// always match what the service will actually allow. They're get-only, so model binding can't touch them.
     /// </para>
@@ -72,6 +73,23 @@ namespace Troy_Web_Property_Manager.ViewModels
         /// the controller validates just this section.
         /// </summary>
         public ApplicantInformationViewModel ApplicantInformation { get; set; } = new();
+
+        /// <summary>
+        /// Applicant Information's version when the page was loaded (hidden field). Continue sends it back, and the
+        /// save is rejected as stale if another applicant saved the section since. Only a concurrency check - it grants
+        /// nothing, so it's fine to bind.
+        /// </summary>
+        public Guid ApplicantInformationVersion { get; set; }
+
+        /// <summary>
+        /// Residence History's version when the page (or the residence list) was loaded (hidden field inside the
+        /// residence list, so it's refreshed along with it). Same idea as <see cref="ApplicantInformationVersion"/>.
+        /// Submit sends both, so an application isn't submitted with changes the applicant hasn't seen.
+        /// </summary>
+        public Guid ResidenceHistoryVersion { get; set; }
+
+        /// <summary>Everyone on the application, the one who started it first. Display only.</summary>
+        [BindNever] public List<ApplicationApplicantViewModel> Applicants { get; set; } = [];
 
         /// <summary>Current status, shown in the page header. Display only.</summary>
         [BindNever] public ApplicationStatus Status { get; set; }
@@ -119,6 +137,44 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public List<string> SubmitBlockers { get; set; } = [];
 
         /// <summary>
+        /// Rule errors on the saved Applicant Information, keyed by field ("ApplicantInformation.Phone"). The
+        /// controller puts these in ModelState so each one shows under its input. Empty until the section is saved,
+        /// and for anyone who can't edit.
+        /// </summary>
+        [BindNever] public List<FieldError> ApplicantInformationErrors { get; set; } = [];
+
+        /// <summary>
+        /// Section-level errors on Residence History (no residences yet). Each residence's own errors are on
+        /// <see cref="ResidenceViewModel.Errors"/>.
+        /// </summary>
+        [BindNever] public List<FieldError> ResidenceHistoryErrors { get; set; } = [];
+
+        /// <summary>
+        /// True if the saved section still has errors - Continue then stays put and the page offers Next instead.
+        /// </summary>
+        public bool SectionHasErrors(ApplicationSection section)
+        {
+            return section switch
+            {
+                ApplicationSection.ApplicantInformation => ApplicantInformationErrors.Count > 0,
+                ApplicationSection.ResidenceHistory => ResidenceHistoryErrors.Count > 0 || Residences.Any(r => r.Errors.Count > 0),
+                _ => false
+            };
+        }
+
+        /// <summary>
+        /// Email of the property manager who has it claimed (Under Review). Managers only - always null for
+        /// applicants, who just see the status.
+        /// </summary>
+        [BindNever] public string? Reviewer { get; set; }
+
+        /// <summary>When it was claimed. Managers only, like <see cref="Reviewer"/>.</summary>
+        [BindNever] public DateTime? ReviewClaimed { get; set; }
+
+        /// <summary>True when the signed-in manager is the one who claimed it.</summary>
+        [BindNever] public bool ClaimedByMe { get; set; }
+
+        /// <summary>
         /// You can only submit once nothing is blocking it (4.b.ii, 4.e). Edit.cshtml greys out the button when this is
         /// false, and <c>ApplicationService.SubmitAsync</c> checks the same list on the server.
         /// </summary>
@@ -137,12 +193,27 @@ namespace Troy_Web_Property_Manager.ViewModels
         }
 
         /// <summary>
-        /// Managers can only review a Submitted application (5.a). Controls the Review button - the controller and
-        /// service check the same rule before opening the modal or saving the review.
+        /// Managers can only review an application they've claimed (5.a). Controls the Review button - the controller
+        /// and service check the same rule before opening the modal or saving the review.
         /// </summary>
         public bool CanReview
         {
-            get { return IsManager && ApplicationWorkflow.CanReview(Status); }
+            get { return IsManager && ClaimedByMe && ApplicationWorkflow.CanReview(Status); }
+        }
+
+        /// <summary>A Submitted application is waiting in the review queue, so any manager can claim it.</summary>
+        public bool CanClaim
+        {
+            get { return IsManager && ApplicationWorkflow.CanClaim(Status); }
+        }
+
+        /// <summary>
+        /// Any manager can release an Under Review application back to the queue - the one who claimed it, or someone
+        /// else if that manager isn't around to finish it.
+        /// </summary>
+        public bool CanRelease
+        {
+            get { return IsManager && ApplicationWorkflow.CanRelease(Status); }
         }
     }
 }

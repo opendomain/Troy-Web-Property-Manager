@@ -4,13 +4,13 @@
     ViewData["Title"] = "Log out";
 }
 
-<h1>@ViewData["Title"]</h1>
+<h1><i class="fa-solid fa-right-from-bracket me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
 
 @if (User.Identity?.IsAuthenticated == true)
 {
     <form method="post" asp-route-returnUrl="@Url.Page("/Index", new { area = "" })">
         <p>Are you sure you want to log out?</p>
-        <button type="submit" class="btn btn-primary">Log out</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-right-from-bracket me-1" aria-hidden="true"></i>Log out</button>
     </form>
 }
 else

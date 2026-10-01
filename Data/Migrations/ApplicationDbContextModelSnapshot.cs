@@ -297,6 +297,31 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                     b.ToTable("ApplicantInformation", (string)null);
                 });
 
+            modelBuilder.Entity("Troy_Web_Property_Manager.Models.ApplicationApplicant", b =>
+                {
+                    b.Property<int>("RentalApplicationId")
+                        .HasColumnType("int")
+                        .HasColumnName("RentalApplicationID");
+
+                    b.Property<int>("ApplicantId")
+                        .HasColumnType("int")
+                        .HasColumnName("ApplicantID");
+
+                    b.Property<DateTime>("Added")
+                        .HasColumnType("datetime");
+
+                    b.Property<string>("AddedByUser")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("RentalApplicationId", "ApplicantId");
+
+                    b.HasIndex(new[] { "ApplicantId" }, "IX_ApplicationApplicant_ApplicantID");
+
+                    b.ToTable("ApplicationApplicant", (string)null);
+                });
+
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.ApplicationStatusHistory", b =>
                 {
                     b.Property<int>("Id")
@@ -373,6 +398,34 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Troy_Web_Property_Manager.Models.ManagerNote", b =>
+                {
+                    b.Property<int>("RentalApplicationId")
+                        .HasColumnType("int")
+                        .HasColumnName("RentalApplicationID");
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("UpdatedByUser")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("UpdatedDate")
+                        .HasColumnType("datetime");
+
+                    b.Property<Guid>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("RentalApplicationId");
+
+                    b.ToTable("ManagerNote", (string)null);
+                });
+
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.Property", b =>
                 {
                     b.Property<int>("Id")
@@ -413,11 +466,25 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                     b.Property<bool>("ApplicantInformationSaved")
                         .HasColumnType("bit");
 
+                    b.Property<Guid>("ApplicantInformationVersion")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("Created")
                         .HasColumnType("datetime");
 
                     b.Property<bool>("ResidenceHistorySaved")
                         .HasColumnType("bit");
+
+                    b.Property<Guid>("ResidenceHistoryVersion")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ReviewClaimed")
+                        .HasColumnType("datetime");
+
+                    b.Property<string>("ReviewerUser")
+                        .IsConcurrencyToken()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<long>("Status")
                         .IsConcurrencyToken()
@@ -432,17 +499,20 @@ namespace Troy_Web_Property_Manager.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Status");
-
                     b.HasIndex("UnitId");
 
                     b.HasIndex(new[] { "ApplicantId" }, "IX_RentalApplications_ApplicantID");
 
                     b.HasIndex(new[] { "ApplicantId", "UnitId" }, "IX_RentalApplications_OpenPerApplicantUnit")
                         .IsUnique()
-                        .HasFilter("[Status] IN (1, 2, 3)");
+                        .HasFilter("[Status] IN (1, 2, 3, 7)");
 
-                    b.ToTable("RentalApplications", (string)null);
+                    b.HasIndex(new[] { "Status", "Submitted" }, "IX_RentalApplications_Status_Submitted");
+
+                    b.ToTable("RentalApplications", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RentalApplications_ReviewClaim", "([Status] = 7 AND [ReviewerUser] IS NOT NULL AND [ReviewClaimed] IS NOT NULL) OR ([Status] <> 7 AND [ReviewerUser] IS NULL AND [ReviewClaimed] IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.Residence", b =>
@@ -469,10 +539,10 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<DateOnly>("MoveInDate")
+                    b.Property<DateOnly?>("MoveInDate")
                         .HasColumnType("date");
 
-                    b.Property<DateOnly>("MoveOutDate")
+                    b.Property<DateOnly?>("MoveOutDate")
                         .HasColumnType("date");
 
                     b.Property<int>("RentalApplicationId")
@@ -483,10 +553,7 @@ namespace Troy_Web_Property_Manager.Data.Migrations
 
                     b.HasIndex("RentalApplicationId");
 
-                    b.ToTable("Residence", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_Residence_Dates", "[MoveOutDate] >= [MoveInDate]");
-                        });
+                    b.ToTable("Residence", (string)null);
                 });
 
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.Status", b =>
@@ -646,6 +713,26 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                     b.Navigation("RentalApplication");
                 });
 
+            modelBuilder.Entity("Troy_Web_Property_Manager.Models.ApplicationApplicant", b =>
+                {
+                    b.HasOne("Troy_Web_Property_Manager.Models.Applicant", "Applicant")
+                        .WithMany("ApplicationApplicants")
+                        .HasForeignKey("ApplicantId")
+                        .IsRequired()
+                        .HasConstraintName("FK_ApplicationApplicant_Applicant");
+
+                    b.HasOne("Troy_Web_Property_Manager.Models.RentalApplication", "RentalApplication")
+                        .WithMany("ApplicationApplicants")
+                        .HasForeignKey("RentalApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_ApplicationApplicant_RentalApplications");
+
+                    b.Navigation("Applicant");
+
+                    b.Navigation("RentalApplication");
+                });
+
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.ApplicationStatusHistory", b =>
                 {
                     b.HasOne("Troy_Web_Property_Manager.Models.RentalApplication", "RentalApplication")
@@ -674,6 +761,18 @@ namespace Troy_Web_Property_Manager.Data.Migrations
                     b.Navigation("RentalApplication");
 
                     b.Navigation("Unit");
+                });
+
+            modelBuilder.Entity("Troy_Web_Property_Manager.Models.ManagerNote", b =>
+                {
+                    b.HasOne("Troy_Web_Property_Manager.Models.RentalApplication", "RentalApplication")
+                        .WithOne()
+                        .HasForeignKey("Troy_Web_Property_Manager.Models.ManagerNote", "RentalApplicationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_ManagerNote_RentalApplications");
+
+                    b.Navigation("RentalApplication");
                 });
 
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.RentalApplication", b =>
@@ -735,6 +834,8 @@ namespace Troy_Web_Property_Manager.Data.Migrations
 
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.Applicant", b =>
                 {
+                    b.Navigation("ApplicationApplicants");
+
                     b.Navigation("RentalApplications");
                 });
 
@@ -746,6 +847,8 @@ namespace Troy_Web_Property_Manager.Data.Migrations
             modelBuilder.Entity("Troy_Web_Property_Manager.Models.RentalApplication", b =>
                 {
                     b.Navigation("ApplicantInformation");
+
+                    b.Navigation("ApplicationApplicants");
 
                     b.Navigation("ApplicationStatusHistories");
 

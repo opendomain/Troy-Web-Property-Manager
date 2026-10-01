@@ -6,11 +6,13 @@
     sets IsReadOnly = true here, which makes both partials read-only. The Submit button lives in Edit.cshtml, inside
     the one form.
 *@
-@* Tell the applicant exactly why Submit is greyed out. It's the same list SubmitAsync checks (SubmissionRules). *@
+@* Tell the applicant exactly why Submit is greyed out: unsaved sections, every error still on a saved section, and
+   the unit being leased. It's the same list SubmitAsync checks (SubmissionRules), and the fields below also show
+   their own errors. *@
 @if (Model.CanEdit && Model.SubmitBlockers.Count > 0)
 {
     <div class="alert alert-warning" role="status">
-        <strong>Before you can submit:</strong>
+        <i class="fa-solid fa-triangle-exclamation me-2" aria-hidden="true"></i><strong>Before you can submit:</strong>
         <ul class="mb-0">
             @foreach (var blocker in Model.SubmitBlockers)
             {

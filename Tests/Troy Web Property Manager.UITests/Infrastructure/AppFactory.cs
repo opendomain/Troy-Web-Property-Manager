@@ -1,0 +1,46 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity.UI.Services;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+namespace Troy_Web_Property_Manager.UITests.Infrastructure
+{
+    /// <summary>
+    /// Hosts the real app for the browser: the same Program.cs, served over Kestrel on a free local port (a browser
+    /// can't reach the in-memory TestServer), in the Development environment so the demo data gets seeded.
+    /// </summary>
+    /// <remarks>
+    /// <para>Three things are swapped for tests:</para>
+    /// <list type="bullet">
+    ///   <item>The database: a new LocalDB database per test run (<see cref="DatabaseName"/>), created, migrated and
+    ///   seeded by Program's startup code, and dropped by <see cref="UiFixture"/> at the end. Your development
+    ///   database is never touched - the fixture checks the connection before any test runs.</item>
+    ///   <item>Email: <see cref="CapturingEmailSender"/> keeps the messages in memory, so registration tests can
+    ///   follow the confirmation link, and nothing is ever sent through SendGrid (even with a key in user secrets).</item>
+    ///   <item>SendGrid:ApiKey is blanked as a second guard, in case anything resolves the real sender.</item>
+    /// </list>
+    /// </remarks>
+    public sealed class AppFactory : WebApplicationFactory<Program>
+    {
+        public string DatabaseName { get; } = $"TroyWebPM_UITests_{Guid.NewGuid():N}";
+
+        public string ConnectionString =>
+            $"Server=(localdb)\\mssqllocaldb;Database={DatabaseName};Trusted_Connection=True;MultipleActiveResultSets=true";
+
+        public CapturingEmailSender Emails { get; } = new();
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Development");
+            builder.UseSetting("ConnectionStrings:DefaultConnection", ConnectionString);
+            builder.UseSetting("SendGrid:ApiKey", "");
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IEmailSender>();
+                services.AddSingleton<IEmailSender>(Emails);
+            });
+        }
+    }
+}

@@ -2,13 +2,32 @@
 @{
     ViewData["Title"] = "Available units";
 }
-<h1>@ViewData["Title"]</h1>
+<h1><i class="fa-solid fa-door-open me-2 text-primary" aria-hidden="true"></i>@ViewData["Title"]</h1>
 @*
     The applicant's Available units page (2.b). Only shows units with no lease covering today (2.d), filtered in SQL.
-    The property and bedroom filters are a GET form, same as on the application list.
+    The property and bedroom filters are a GET form, same as on the application list. The Property, Bedrooms, Rent and
+    Type headers are links that sort the list (in SQL, see PropertyService.GetAvailableUnitsAsync): click once for
+    ascending, again for descending. They keep the filters, and the filter form keeps the sort.
 *@
+@{
+    // One sortable column header. aria-sort tells screen readers which column is sorted and which way; the icon is
+    // the same one the application grid uses and is just decoration.
+    async Task SortableHeader(UnitSortColumn column, string title)
+    {
+        <th scope="col" aria-sort="@Model.AriaSort(column)">
+            <a class="data-grid-sort" asp-action="Index" asp-route-propertyId="@Model.PropertyId" asp-route-bedrooms="@Model.Bedrooms"
+               asp-route-sort="@column" asp-route-dir="@Model.NextDir(column)">@title<i class="fa-solid ms-1 @Model.SortIcon(column)" aria-hidden="true"></i></a>
+        </th>
+    }
+}
 
 <form method="get" class="row g-2 align-items-end mb-3">
+    @* Keep the current sort when filtering (only when it isn't the default, to keep the URL short). *@
+    @if (Model.Sort != UnitSortColumn.Property || Model.Dir != SortDirection.Asc)
+    {
+        <input type="hidden" name="sort" value="@Model.Sort" />
+        <input type="hidden" name="dir" value="@Model.Dir" />
+    }
     <div class="col-sm-6 col-md-4">
         <label for="propertyId" class="form-label">Property</label>
         <select id="propertyId" name="propertyId" asp-items="Model.Properties" class="form-select">
@@ -26,10 +45,10 @@
         </select>
     </div>
     <div class="col-auto">
-        <button type="submit" class="btn btn-outline-primary">Filter</button>
+        <button type="submit" class="btn btn-outline-primary"><i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Filter</button>
         @if (Model.IsFiltered)
         {
-            <a asp-action="Index" class="btn btn-link">Clear</a>
+            <a asp-action="Index" class="btn btn-link"><i class="fa-solid fa-xmark me-1" aria-hidden="true"></i>Clear</a>
         }
     </div>
 </form>
@@ -44,11 +63,11 @@ else
         <table class="table">
             <thead>
                 <tr>
-                    <th scope="col">Property</th>
+                    @{ await SortableHeader(UnitSortColumn.Property, "Property"); }
                     <th scope="col">Unit</th>
-                    <th scope="col">Bedrooms</th>
-                    <th scope="col">Rent</th>
-                    <th scope="col">Type</th>
+                    @{ await SortableHeader(UnitSortColumn.Bedrooms, "Bedrooms"); }
+                    @{ await SortableHeader(UnitSortColumn.Rent, "Rent"); }
+                    @{ await SortableHeader(UnitSortColumn.Type, "Type"); }
                     <th scope="col"><span class="visually-hidden">Apply</span></th>
                 </tr>
             </thead>
@@ -59,14 +78,14 @@ else
                         <td>@unit.PropertyName</td>
                         <td>@unit.UnitNumber</td>
                         <td>@unit.Bedrooms</td>
-                        <td>@unit.MonthlyRent.ToString("C0")</td>
+                        <td>@unit.MonthlyRent.ToString("C")</td>
                         <td>@unit.UnitTypeName</td>
                         <td>
                             @* Apply is a POST since it creates an application. That way it has an antiforgery token,
                                and a crawler or link prefetch can't create applications just by following a URL. *@
                             <form asp-controller="Applications" asp-action="Start" method="post">
                                 <input type="hidden" name="unitId" value="@unit.Id" />
-                                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                                <button type="submit" class="btn btn-sm btn-primary"><i class="fa-solid fa-paper-plane me-1" aria-hidden="true"></i>Apply</button>
                             </form>
                         </td>
                     </tr>

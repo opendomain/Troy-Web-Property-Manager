@@ -1,6 +1,4 @@
-﻿using System.Security.Claims;
-using Microsoft.AspNetCore.Mvc;
-using Troy_Web_Property_Manager.Models;
+﻿using Microsoft.AspNetCore.Mvc;
 using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager.Controllers
@@ -17,7 +15,7 @@ namespace Troy_Web_Property_Manager.Controllers
         /// </summary>
         protected CurrentUser CurrentUser
         {
-            get { return new(User.FindFirstValue(ClaimTypes.NameIdentifier)!, User.IsInRole(AppRoles.PropertyManager)); }
+            get { return CurrentUser.From(User); }
         }
 
         /// <summary>
@@ -27,6 +25,15 @@ namespace Troy_Web_Property_Manager.Controllers
         protected IActionResult ModalSuccess(string? refreshTarget = null, string? refreshUrl = null)
         {
             return Json(new { success = true, refreshTarget, refreshUrl });
+        }
+
+        /// <summary>
+        /// The modal form worked, but the current page no longer makes sense (e.g. you just left an application), so
+        /// site.js closes the modal and goes to <paramref name="url"/> instead of refreshing.
+        /// </summary>
+        protected IActionResult ModalRedirect(string url)
+        {
+            return Json(new { success = true, redirectUrl = url });
         }
 
         /// <summary>
