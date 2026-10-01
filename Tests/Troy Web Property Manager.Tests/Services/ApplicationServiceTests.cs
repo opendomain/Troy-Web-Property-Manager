@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Rules;
 using Troy_Web_Property_Manager.Services;
@@ -11,6 +12,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
     public sealed class ApplicationServiceTests : IDisposable
     {
         private readonly TestDatabase _db = new();
+        private readonly TestLogger<ApplicationService> _log = new();
 
         public void Dispose()
         {
@@ -22,7 +24,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
         /// <summary>A service on a fresh context, same as each web request would get.</summary>
         private ApplicationService Service(params IInterceptor[] interceptors)
         {
-            return new(_db.CreateContext(interceptors));
+            return new(_db.CreateContext(interceptors), logger: _log);
         }
 
         private static void AssertOk(ServiceResult result)
@@ -1384,6 +1386,67 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var id = await StartAsync();
 
             Assert.Empty(await Service().GetHistoryAsync(id, ManagerUser));
+        }
+
+        // ---------------- Logging ----------------
+
+        [Fact]
+        public async Task Logs_EachChange_WithWhoAndWhichApplication()
+        {
+            var id = await SubmittedAsync();
+
+            Assert.True(_log.Has(LogLevel.Information, $"User {ApplicantUser.Id} opened application {id} for unit {_db.UnitId}."));
+            Assert.True(_log.Has(LogLevel.Information, $"Submit on application {id} by user {ApplicantUser.Id} succeeded."));
+        }
+
+        [Fact]
+        public async Task Logs_TheReview_AndTheLeaseAnApprovalCreates()
+        {
+            var id = await ClaimedAsync();
+
+            AssertOk(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser));
+
+            Assert.True(_log.Has(LogLevel.Information, $"Review (Approve) on application {id} by user {ManagerUser.Id} succeeded."));
+            Assert.True(_log.Has(LogLevel.Information, $"created for unit {_db.UnitId} from"));
+        }
+
+        [Fact]
+        public async Task Logs_AWarning_ForAnEditToALockedApplication_AndForAStaleSave()
+        {
+            var submitted = await SubmittedAsync();
+            Assert.False((await SaveInfoAsync(submitted, Info(), ApplicantUser)).Succeeded);
+            Assert.True(_log.Has(LogLevel.Warning,
+                $"User {ApplicantUser.Id} tried to change application {submitted}, which is Submitted and can't be edited."));
+
+            var draft = await StartAsync(OtherApplicantUser);
+            var (loaded, _) = await VersionsAsync(draft);
+            AssertOk(await Service().SaveApplicantInformationAsync(draft, Info(), loaded, OtherApplicantUser));
+            Assert.True((await Service().SaveApplicantInformationAsync(draft, Info(), loaded, OtherApplicantUser)).Conflict);
+            Assert.True(_log.Has(LogLevel.Warning,
+                $"Save applicant information on application {draft} by user {OtherApplicantUser.Id} was rejected: someone else changed it first."));
+        }
+
+        [Fact]
+        public async Task Logs_ARefusal_WithItsReason()
+        {
+            var id = await StartAsync();
+
+            Assert.False((await SubmitAsync(id, ApplicantUser)).Succeeded);
+
+            Assert.True(_log.Has(LogLevel.Information,
+                $"Submit on application {id} by user {ApplicantUser.Id} was refused: {SubmissionRules.ApplicantInformationNotSaved}"));
+        }
+
+        [Fact]
+        public async Task Logs_NeverContainTheManagersNotes()
+        {
+            const string secret = "Reference check: landlord was unhappy";
+            var id = await SubmittedAsync();
+
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes(secret), ManagerUser));
+
+            Assert.True(_log.Has(LogLevel.Information, $"Save manager notes on application {id} by user {ManagerUser.Id} succeeded."));
+            Assert.DoesNotContain(_log.Messages, m => m.Message.Contains(secret));
         }
     }
 }

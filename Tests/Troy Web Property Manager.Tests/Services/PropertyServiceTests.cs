@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
 using Troy_Web_Property_Manager.ViewModels;
@@ -9,6 +10,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
     public sealed class PropertyServiceTests : IDisposable
     {
         private readonly TestDatabase _db = new();
+        private readonly TestLogger<PropertyService> _log = new();
 
         public void Dispose()
         {
@@ -17,7 +19,7 @@ namespace Troy_Web_Property_Manager.Tests.Services
 
         private PropertyService Service()
         {
-            return new(_db.CreateContext());
+            return new(_db.CreateContext(), logger: _log);
         }
 
         private static void AssertOk(ServiceResult result)
@@ -283,6 +285,27 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var result = await Service().GetAvailableUnitsAsync(_db.PropertyId, minBedrooms: 1, UnitSortColumn.Rent, SortDirection.Desc);
 
             Assert.Equal(new[] { units["R101"], units["R102"] }, result.Select(u => u.Id));
+        }
+
+        // ---------------- Logging ----------------
+
+        [Fact]
+        public async Task Logs_AddingAndRemovingAUnit()
+        {
+            var saved = await Service().SaveUnitAsync(NewUnit("301"));
+            AssertOk(saved);
+            AssertOk(await Service().DeleteUnitAsync(saved.Id));
+
+            Assert.True(_log.Has(LogLevel.Information, $"Unit {saved.Id} added to property {_db.PropertyId}."));
+            Assert.True(_log.Has(LogLevel.Information, $"Unit {saved.Id} removed from property {_db.PropertyId}."));
+        }
+
+        [Fact]
+        public async Task Logs_AWarning_WhenAnInactiveTypeIsPosted()
+        {
+            Assert.False((await Service().SaveUnitAsync(NewUnit("301", _db.InactiveUnitTypeId))).Succeeded);
+
+            Assert.True(_log.Has(LogLevel.Warning, $"unit type {_db.InactiveUnitTypeId} is inactive or doesn't exist."));
         }
     }
 }
