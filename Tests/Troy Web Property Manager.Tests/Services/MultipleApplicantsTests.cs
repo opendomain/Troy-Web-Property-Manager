@@ -229,11 +229,35 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
-        public async Task Add_LosingADeadlock_IsStale_AndAddsNoOne()
+        public async Task Add_LosingADeadlock_RetriesAndAddsThem()
         {
             var id = await StartAsync();
 
             var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock))
+                .AddApplicantAsync(id, new AddApplicantViewModel { Email = Email(OtherApplicantUser) }, ApplicantUser);
+
+            AssertOk(result);
+            Assert.Equal(2, _db.CreateContext().ApplicationApplicants.Count(m => m.RentalApplicationId == id));
+        }
+
+        [Fact]
+        public async Task Add_LosingAUniqueRace_RetriesAndAddsThem()
+        {
+            var id = await StartAsync();
+
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.UniqueViolation))
+                .AddApplicantAsync(id, new AddApplicantViewModel { Email = Email(OtherApplicantUser) }, ApplicantUser);
+
+            AssertOk(result);
+            Assert.Equal(2, _db.CreateContext().ApplicationApplicants.Count(m => m.RentalApplicationId == id));
+        }
+
+        [Fact]
+        public async Task Add_LosingEveryAttempt_IsStale_AndAddsNoOne()
+        {
+            var id = await StartAsync();
+
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock, FakeSqlErrors.UniqueViolation, FakeSqlErrors.Deadlock))
                 .AddApplicantAsync(id, new AddApplicantViewModel { Email = Email(OtherApplicantUser) }, ApplicantUser);
 
             Assert.True(result.Conflict);
