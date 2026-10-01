@@ -90,6 +90,11 @@ namespace Troy_Web_Property_Manager.Controllers
         /// </summary>
         public async Task<IActionResult> Edit(int id, ApplicationSection? section)
         {
+            if (!ModelState.IsValid || (section.HasValue && !Enum.IsDefined(typeof(ApplicationSection), section.Value)))
+            {
+                return BadRequest();
+            }
+
             var model = await applications.GetEditorAsync(id, section, CurrentUser);
             if (model is null) return NotFound();
             // Errors still on the saved section go into ModelState, so each shows under its own field - on section 1
@@ -112,6 +117,11 @@ namespace Troy_Web_Property_Manager.Controllers
         [HttpPost, Authorize(Roles = AppRoles.Applicant)]
         public async Task<IActionResult> Edit(int id, ApplicationEditorViewModel model, string command)
         {
+            if (!Enum.IsDefined(typeof(ApplicationSection), model.Section))
+            {
+                return BadRequest();
+            }
+
             switch (command)
             {
                 case "back":

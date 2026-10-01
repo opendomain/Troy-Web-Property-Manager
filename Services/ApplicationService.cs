@@ -300,7 +300,13 @@ namespace Troy_Web_Property_Manager.Services
             // applicant while they can still fix things (and only then is the lease query worth it).
             var checks = canEdit ? CheckSections(application, await UnitHasActiveLeaseAsync(application.UnitId)) : null;
             // Editors start at section 1; everyone else lands on the read-only Summary.
-            var current = section ?? (canEdit ? ApplicationSection.ApplicantInformation : ApplicationSection.Summary);
+            var current = section.HasValue && Enum.IsDefined(typeof(ApplicationSection), section.Value)
+                ? section.Value
+                : section.HasValue
+                    ? ApplicationSection.Summary
+                    : canEdit
+                        ? ApplicationSection.ApplicantInformation
+                        : ApplicationSection.Summary;
 
             // Use the application's own copy once it's saved; until then, pre-fill from the applicant's profile.
             var info = application.ApplicantInformation is { } saved
