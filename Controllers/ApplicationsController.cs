@@ -156,6 +156,10 @@ namespace Troy_Web_Property_Manager.Controllers
                     return await RedisplayAsync(id, model);
 
                 case "submit":
+                    // Submit is only valid from the read-only Summary. The button is only rendered there, but the
+                    // action must enforce the same rule for direct or stale POSTs.
+                    if (model.Section != ApplicationSection.Summary) return BadRequest();
+
                     // 4.b.ii / 4.e: the service makes sure both sections are saved and the unit isn't already leased,
                     // and that neither section changed since this Summary was loaded.
                     var submitted = await applications.SubmitAsync(id, model.ApplicantInformationVersion,
