@@ -19,7 +19,10 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     ///   database is never touched - the fixture checks the connection before any test runs.</item>
     ///   <item>Email: <see cref="CapturingEmailSender"/> keeps the messages in memory, so registration tests can
     ///   follow the confirmation link, and nothing is ever sent through SendGrid (even with a key in user secrets).</item>
-    ///   <item>SendGrid:ApiKey is blanked as a second guard, in case anything resolves the real sender.</item>
+    ///   <item>SendGrid:ApiKey is set to a dummy value. Register only calls the email sender when a key is
+    ///   configured (with none it shows the link on the page instead), so the key has to look set for the capturing
+    ///   sender to see anything. It replaces any real key from user secrets, so even if something resolved the real
+    ///   sender, SendGrid would refuse it.</item>
     /// </list>
     /// </remarks>
     public sealed class AppFactory : WebApplicationFactory<Program>
@@ -35,7 +38,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
         {
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:DefaultConnection", ConnectionString);
-            builder.UseSetting("SendGrid:ApiKey", "");
+            builder.UseSetting("SendGrid:ApiKey", "uitest-not-a-real-key");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IEmailSender>();
