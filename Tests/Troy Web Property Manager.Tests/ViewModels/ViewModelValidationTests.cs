@@ -50,6 +50,12 @@ namespace Troy_Web_Property_Manager.Tests.ViewModels
         }
 
         [Fact]
+        public void Review_UndefinedOutcome_IsInvalid()
+        {
+            Assert.Contains(nameof(ReviewViewModel.Outcome), ErrorFields(new ReviewViewModel { Outcome = (ReviewOutcome)99, Comment = "x" }));
+        }
+
+        [Fact]
         public void Review_CommentOver500Characters_IsInvalid()
         {
             Assert.Contains(nameof(ReviewViewModel.Comment),

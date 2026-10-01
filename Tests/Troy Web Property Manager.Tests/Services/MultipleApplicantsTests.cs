@@ -216,6 +216,32 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task Add_SomeoneAlreadyAddedToAnotherOpenApplicationForTheUnit_IsRejected()
+        {
+            // OtherApplicantUser didn't start an application for the unit, but is on ApplicantUser's.
+            await SharedDraftAsync(_db.UnitId);
+            var id = await StartAsync(ThirdApplicantUser, _db.UnitId);
+
+            var result = await Service().AddApplicantAsync(id, new AddApplicantViewModel { Email = Email(OtherApplicantUser) }, ThirdApplicantUser);
+
+            Assert.Contains("already have an open application for this unit", result.Errors[nameof(AddApplicantViewModel.Email)]);
+            Assert.Single(_db.CreateContext().ApplicationApplicants.Where(m => m.RentalApplicationId == id));
+        }
+
+        [Fact]
+        public async Task Add_LosingADeadlock_IsStale_AndAddsNoOne()
+        {
+            var id = await StartAsync();
+
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock))
+                .AddApplicantAsync(id, new AddApplicantViewModel { Email = Email(OtherApplicantUser) }, ApplicantUser);
+
+            Assert.True(result.Conflict);
+            Assert.Single(_db.CreateContext().ApplicationApplicants.Where(m => m.RentalApplicationId == id));
+            Assert.False(_db.CreateContext().Applicants.Any(a => a.UserId == OtherApplicantUser.Id));
+        }
+
+        [Fact]
         public async Task Add_CreatesTheirProfileIfTheyNeverApplied()
         {
             var id = await StartAsync();

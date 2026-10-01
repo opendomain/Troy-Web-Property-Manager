@@ -264,6 +264,37 @@ namespace Troy_Web_Property_Manager.Tests.Services
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }
 
+        [Fact]
+        public async Task Start_LosingADeadlock_RetriesAndOpensTheApplication()
+        {
+            // Two simultaneous Applies in serializable transactions: SQL Server picks one as the deadlock victim.
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock)).StartAsync(_db.UnitId, ApplicantUser);
+
+            AssertOk(result);
+            Assert.Equal(result.Id, (await _db.CreateContext().RentalApplications.SingleAsync()).Id);
+        }
+
+        [Fact]
+        public async Task Start_LosingAUniqueRaceThenADeadlock_RetriesAgain()
+        {
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.UniqueViolation, FakeSqlErrors.Deadlock))
+                .StartAsync(_db.UnitId, ApplicantUser);
+
+            AssertOk(result);
+            Assert.Single(_db.CreateContext().RentalApplications);
+        }
+
+        [Fact]
+        public async Task Start_LosingEveryAttempt_AsksToTryAgainInsteadOfThrowing()
+        {
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock, FakeSqlErrors.UniqueViolation, FakeSqlErrors.Deadlock))
+                .StartAsync(_db.UnitId, ApplicantUser);
+
+            Assert.False(result.Succeeded);
+            Assert.True(result.Conflict);
+            Assert.Empty(_db.CreateContext().RentalApplications);
+        }
+
         // ---------------- Editor and ownership ----------------
 
         [Fact]
@@ -284,6 +315,16 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.False(editor.IsReadOnly);
             Assert.Equal(ApplicationSection.ApplicantInformation, editor.Section);
             Assert.False(editor.CanSubmit);
+        }
+
+        [Fact]
+        public async Task GetEditor_UndefinedSection_OpensTheSummary()
+        {
+            var id = await StartAsync();
+
+            var editor = await Service().GetEditorAsync(id, (ApplicationSection)99, ApplicantUser);
+
+            Assert.Equal(ApplicationSection.Summary, editor!.Section);
         }
 
         [Fact]
@@ -562,6 +603,21 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task Submit_WithSectionErrorsOnALeasedUnit_ReportsThemAll()
+        {
+            var id = await StartAsync();
+            await LeaseUnitAsync(_db.UnitId);
+
+            var result = await SubmitAsync(id, ApplicantUser);
+
+            // Same list as the Summary, so the applicant isn't told about the lease only after fixing everything else.
+            AssertError(result, SubmissionRules.ApplicantInformationNotSaved);
+            AssertError(result, SubmissionRules.ResidenceHistoryNotSaved);
+            AssertError(result, SubmissionRules.UnitLeased);
+            Assert.Equal((long)ApplicationStatus.Draft, (await LoadAsync(id)).Status);
+        }
+
+        [Fact]
         public async Task Submit_WhenUnitHasActiveLease_IsRejected()
         {
             var id = await CompleteDraftAsync();
@@ -572,6 +628,22 @@ namespace Troy_Web_Property_Manager.Tests.Services
             var editor = (await Service().GetEditorAsync(id, ApplicationSection.Summary, ApplicantUser))!;
             Assert.Equal([SubmissionRules.UnitLeased], editor.SubmitBlockers);
             Assert.False(editor.CanSubmit);
+        }
+
+        [Fact]
+        public async Task Submit_LosingADeadlock_IsStale_AndRollsBackEverything()
+        {
+            var id = await CompleteDraftAsync();
+            var (info, history) = await VersionsAsync(id);
+
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock)).SubmitAsync(id, info, history, ApplicantUser);
+
+            Assert.True(result.Conflict);
+            Assert.Equal((long)ApplicationStatus.Draft, (await LoadAsync(id)).Status);
+            // The section-version swaps ran before the save, in the same transaction, so they were rolled back too:
+            // the same Summary can just submit again.
+            Assert.Equal((info, history), await VersionsAsync(id));
+            AssertOk(await Service().SubmitAsync(id, info, history, ApplicantUser));
         }
 
         [Fact]
@@ -778,6 +850,17 @@ namespace Troy_Web_Property_Manager.Tests.Services
         {
             var id = await CompleteDraftAsync();
             AssertError(await Service().ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser), "Claim this application");
+        }
+
+        [Fact]
+        public async Task Review_UndefinedOutcome_IsRejectedAndChangesNothing()
+        {
+            var id = await ClaimedAsync();
+
+            AssertError(await Service().ReviewAsync(id, Review((ReviewOutcome)99, "Comment"), ManagerUser), "valid outcome");
+
+            Assert.Equal((long)ApplicationStatus.UnderReview, (await LoadAsync(id)).Status);
+            Assert.Empty(_db.CreateContext().Leases);
         }
 
         [Fact]

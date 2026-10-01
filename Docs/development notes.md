@@ -891,3 +891,119 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **A** `Tests/Troy Web Property Manager.Tests/TestLogger.cs` - An `ILogger<T>` that records what was logged, so tests can check it.
 - **M** `Tests/.../Services/ApplicationServiceTests.cs` - Services get the TestLogger. New tests: a submit is logged with who and which application; a review and its lease are logged; warnings for editing a submitted application and for a stale save; a refusal is logged with its reason; the managers' note text never appears in the log.
 - **M** `Tests/.../Services/PropertyServiceTests.cs` - Adding and removing a unit are logged; posting an inactive type logs a warning.
+
+## Phase 10: Documentation
+
+### Step 62: Create development notes.md
+
+*PR #36*
+
+**Assessment:** Considerations ("explainable design decisions"); Deliverables.
+
+**Files:**
+
+- **A** `Docs/development notes.md` - This file: every check-in, oldest first, with what changed, why, and which part of the PDF it covers.
+
+## Phase 11: Final review hardening
+
+A last review of the application workflow looked for rules that the page enforces but the server didn't, and for
+check-then-write races that only show up under concurrent requests. Each fix keeps to the pattern from Phase 6: the
+service enforces the rule itself (never trusting the page or the controller), and a race the database stops becomes a
+friendly "reload and try again" message instead of a 500.
+
+These steps are on the `FinalReview` branch and haven't been merged through a pull request yet.
+
+### Step 63: Submit from Summary Only
+
+*Branch FinalReview*
+
+**Assessment:** Functional 4.b.ii (Submit from the read-only Summary); Considerations (security).
+
+**Why:** The Submit button is only rendered on the Summary, but the Edit POST accepted `command=submit` from any
+section. A hand-made or stale post could submit straight from section 1 or 2, skipping the Summary the applicant is
+meant to check first.
+
+**Files:**
+
+- **M** `Controllers/ApplicationsController.cs` - The `submit` command returns 400 unless the posted section is the Summary.
+
+### Step 64: Validate review outcomes against the defined enum values.
+
+*Branch FinalReview*
+
+**Assessment:** Functional 5.a (Approve / Return / Deny); Considerations (security).
+
+**Why:** Model binding happily turns `Outcome=99` into a `ReviewOutcome` that isn't one of the three. `[Required]` only
+caught a missing value, so an undefined outcome reached the review logic.
+
+**Files:**
+
+- **M** `ViewModels/ReviewViewModel.cs` - `[EnumDataType]` on Outcome, so the form shows "Choose a valid outcome."
+- **M** `Services/ApplicationService.cs` - ReviewAsync checks the outcome again, since the service doesn't trust its caller.
+
+### Step 65: Make the submit lease check atomic with submission
+
+*Branch FinalReview*
+
+**Assessment:** Functional 4.e (no submission for a leased unit); 2.d (one active lease); Considerations (concurrency).
+
+**Why:** Submit checked the unit's lease and then saved in a separate step, so a manager's approval of another
+application could lease the unit in between. The lease check now runs in the same Serializable transaction as the
+status change and section-version swaps. Approval already uses Serializable (Step 25), so the two
+can't both get past the lease check; if they collide, SQL Server picks one as a deadlock victim and the applicant is
+asked to retry.
+
+**Files:**
+
+- **M** `Services/ApplicationService.cs` - SaveSectionsAsync becomes a wrapper around a new SaveSectionsWithCheckAsync, which takes an isolation level and a check to run inside the transaction before anything is written. SubmitAsync uses it with Serializable and turns a deadlock (SQL error 1205) into a stale result.
+
+### Step 66: Protect "one open application per applicant per unit" rule for co-applicants
+
+*Branch FinalReview*
+
+**Assessment:** Functional 3 (rental application); Bonus 5 (multiple applicants); Considerations (concurrency).
+
+**Why:** The filtered unique index only covers the applicant who *started* an application. Since Bonus 5, someone can
+also be *added* to one, so "already on an open application for this unit" is a check in code that the index can't
+back up. Starting an application and being added to another one at the same moment could both pass it.
+
+**Files:**
+
+- **M** `Services/ApplicationService.cs` - StartOnceAsync and AddApplicantAsync both run their open-application check and insert in a Serializable transaction, so neither can slip past the other. A deadlock becomes a stale result in both.
+
+### Step 67: Normalize or reject unknown section values
+
+*Branch FinalReview*
+
+**Assessment:** Functional 4.b (one section at a time); Considerations (security).
+
+**Why:** `?section=99` bound to an `ApplicationSection` that isn't one of the three, and the editor tried to show it.
+
+**Files:**
+
+- **M** `Controllers/ApplicationsController.cs` - Edit GET and POST return 400 for a section that isn't defined or didn't bind.
+- **M** `Services/ApplicationService.cs` - GetEditorAsync falls back to the Summary for an undefined section, in case another caller passes one.
+
+### Step 68: Review follow-ups
+
+*Branch FinalReview - not committed yet when this was written*
+
+**Assessment:** Bonus 5; Functional 4.b.ii, 4.e; Technical 2.c (unit tests); Considerations (concurrency).
+
+**Why:** A review of Steps 63-67 found gaps:
+
+- Under Serializable, a double-click on Apply usually ends in a deadlock, not the unique-key error StartAsync was
+  written to retry, so the applicant got "reload and try again" instead of their application.
+- A retry that lost a second time threw from inside the catch block and became a 500.
+- Submit stopped at section errors before checking the lease, so the applicant only heard the unit was leased after
+  fixing everything else - unlike the Summary, which lists both.
+- None of Steps 63-67 had tests, and SQLite (used by the unit tests) never produces SQL Server deadlocks.
+
+**Files:**
+
+- **M** `Services/ApplicationService.cs` - StartAsync retries up to three times on a deadlock or unique-key error (MaxStartAttempts) and only returns a stale result if every attempt loses. SubmitAsync builds the whole blocker list - section errors and the lease - inside the Serializable transaction, the same list the Summary shows. GetEditorAsync's nested ternary for picking the section became an if/else.
+- **A** `Tests/Troy Web Property Manager.Tests/FakeSqlErrors.cs` - Builds a real SqlException with a given error number (through SqlClient's internal factory, since it has no public constructor) and an interceptor that fails SaveChanges with a sequence of them.
+- **A** `Tests/.../Controllers/ApplicationsControllerTests.cs` - Submit from section 1 or 2, an undefined section on GET and POST, and a section that didn't bind all return 400.
+- **M** `Tests/.../Services/ApplicationServiceTests.cs` - Start retries after a deadlock, and after a unique-key error then a deadlock; losing every attempt is stale, not an exception. A deadlocked Submit rolls back the status and section versions so the same Summary can submit again. Submit reports section errors and the lease together. An undefined review outcome changes nothing. An undefined section opens the Summary.
+- **M** `Tests/.../Services/MultipleApplicantsTests.cs` - Adding someone who was added (not started) on another open application for the unit is rejected; a deadlocked add adds no one.
+- **M** `Tests/.../ViewModels/ViewModelValidationTests.cs` - An undefined review outcome is invalid.

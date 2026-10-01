@@ -1,6 +1,7 @@
 using System.Data;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
@@ -61,6 +62,9 @@ namespace Troy_Web_Property_Manager.Services
         /// <summary>What a stale Submit says: a section changed after the Summary was loaded.</summary>
         public const string ChangedBeforeSubmitMessage =
             "This application was changed by someone else after you opened the Summary. Reload the page and check it before submitting.";
+
+        /// <summary>How many times Start tries before giving up on losing races to simultaneous requests.</summary>
+        private const int MaxStartAttempts = 3;
 
         /// <summary>Statuses that count as an open application (the ones the unique index covers).</summary>
         private static readonly long[] OpenStatuses =
@@ -153,25 +157,33 @@ namespace Troy_Web_Property_Manager.Services
         /// </summary>
         /// <remarks>
         /// The check-then-insert below can race if the same request comes in twice (someone double-clicks Apply).
-        /// The unique indexes (one profile per user, one open application per applicant and unit) catch that, so the
-        /// loser gets a unique-key error. Rather than show a 500, we retry once, and the retry just finds what the
-        /// other request created.
+        /// It runs in a serializable transaction, so SQL Server usually stops the loser with a deadlock; otherwise the
+        /// unique indexes (one profile per user, one open application per applicant and unit) stop it with a
+        /// unique-key error. Either way, rather than show an error, we try again and the retry just finds what the
+        /// other request created. Only if every attempt loses do we ask the applicant to try again.
         /// </remarks>
         public async Task<ServiceResult> StartAsync(int unitId, CurrentUser user)
         {
-            ServiceResult result;
-            try
+            ServiceResult? result = null;
+            for (var attempt = 1; result is null; attempt++)
             {
-                result = await StartOnceAsync(unitId, user);
-            }
-            catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
-            {
-                // Another request (probably a double-click on Apply) beat us to creating the profile or application.
-                // Try again and we'll just pick up what it made.
-                _logger.LogInformation("User {UserId} applied for unit {UnitId} twice at once; picking up the other request's application.",
-                    user.Id, unitId);
-                db.ChangeTracker.Clear();
-                result = await StartOnceAsync(unitId, user);
+                try
+                {
+                    result = await StartOnceAsync(unitId, user);
+                }
+                catch (Exception ex) when (attempt < MaxStartAttempts && (SqlErrors.IsUniqueViolation(ex) || SqlErrors.IsDeadlock(ex)))
+                {
+                    // Another request (probably a double-click on Apply) beat us to creating the profile or application.
+                    // Try again and we'll just pick up what it made.
+                    _logger.LogInformation("User {UserId} applied for unit {UnitId} twice at once; picking up the other request's application.",
+                        user.Id, unitId);
+                    db.ChangeTracker.Clear();
+                }
+                catch (Exception ex) when (SqlErrors.IsUniqueViolation(ex) || SqlErrors.IsDeadlock(ex))
+                {
+                    db.ChangeTracker.Clear();
+                    result = ServiceResult.Stale("Another application for this unit was created at the same time. Reload and try again.");
+                }
             }
 
             if (result.Succeeded)
@@ -191,6 +203,10 @@ namespace Troy_Web_Property_Manager.Services
             if (user.IsManager) return ServiceResult.Forbid("Only applicants can apply for a unit.");
             if (!await db.Units.AnyAsync(u => u.Id == unitId)) return ServiceResult.Missing();
 
+            // Serialize this open-application check and insert with AddApplicantAsync, which can also add this user
+            // to an open application for the same unit.
+            await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
             // Already on an open application for this unit (one they started, or one they were added to)? Reopen
             // that one instead of making a duplicate.
             var openId = await db.RentalApplications
@@ -198,7 +214,11 @@ namespace Troy_Web_Property_Manager.Services
                     && a.ApplicationApplicants.Any(m => m.Applicant.UserId == user.Id))
                 .Select(a => (int?)a.Id)
                 .FirstOrDefaultAsync();
-            if (openId is int existing) return ServiceResult.Ok(existing);
+            if (openId is int existing)
+            {
+                await transaction.CommitAsync();
+                return ServiceResult.Ok(existing);
+            }
 
             if (await UnitHasActiveLeaseAsync(unitId)) return ServiceResult.Error("This unit is not available.");
 
@@ -231,6 +251,7 @@ namespace Troy_Web_Property_Manager.Services
 
             db.RentalApplications.Add(application);
             await db.SaveChangesAsync();
+            await transaction.CommitAsync();
             return ServiceResult.Ok(application.Id);
         }
 
@@ -284,8 +305,21 @@ namespace Troy_Web_Property_Manager.Services
             // Field errors and what's stopping Submit, so the page and the Summary can show them. Only for the
             // applicant while they can still fix things (and only then is the lease query worth it).
             var checks = canEdit ? CheckSections(application, await UnitHasActiveLeaseAsync(application.UnitId)) : null;
-            // Editors start at section 1; everyone else lands on the read-only Summary.
-            var current = section ?? (canEdit ? ApplicationSection.ApplicantInformation : ApplicationSection.Summary);
+            // Editors start at section 1; everyone else lands on the read-only Summary. A section that isn't one of
+            // ours (the controller rejects those, but the service doesn't trust its caller) also gets the Summary.
+            ApplicationSection current;
+            if (section is null)
+            {
+                current = canEdit ? ApplicationSection.ApplicantInformation : ApplicationSection.Summary;
+            }
+            else if (Enum.IsDefined(section.Value))
+            {
+                current = section.Value;
+            }
+            else
+            {
+                current = ApplicationSection.Summary;
+            }
 
             // Use the application's own copy once it's saved; until then, pre-fill from the applicant's profile.
             var info = application.ApplicantInformation is { } saved
@@ -502,20 +536,35 @@ namespace Troy_Web_Property_Manager.Services
         {
             var (application, error) = await LoadEditableAsync(id, user);
             if (error is not null) return error;
-            // 4.b.ii / 4.e: both sections saved with no errors left, and the unit not leased. The Summary shows the
-            // same list and the page disables the button, but this is the check that actually matters. We leave any
-            // other open applications for the unit alone.
-            var blockers = CheckSections(application!, await UnitHasActiveLeaseAsync(application!.UnitId)).Blockers;
-            if (blockers.Count > 0)
+            // 4.b.ii / 4.e: both sections saved with no errors left, and the unit not leased - the same one list the
+            // Summary shows, so every blocker is reported at once. The lease check shares a serializable transaction
+            // with the status/version writes below, so an approval can't lease the unit between the availability
+            // check and this submission. Other open applications for the unit are left as they are.
+            try
             {
-                return Logged(ServiceResult.Error(string.Join(" ", blockers)), "Submit", id, user);
+                var (saved, _) = await SaveSectionsWithCheckAsync(id, ChangedBeforeSubmitMessage, IsolationLevel.Serializable,
+                    async () =>
+                    {
+                        var blockers = CheckSections(application!, await UnitHasActiveLeaseAsync(application!.UnitId)).Blockers;
+                        if (blockers.Count > 0)
+                        {
+                            return ServiceResult.Error(string.Join(" ", blockers));
+                        }
+                        ChangeStatus(application!, ApplicationStatus.Submitted, user);
+                        application!.Submitted = _clock.Now;
+                        return null;
+                    },
+                    (ApplicationSection.ApplicantInformation, applicantInformationVersion),
+                    (ApplicationSection.ResidenceHistory, residenceHistoryVersion));
+                return Logged(saved, "Submit", id, user);
             }
-            ChangeStatus(application, ApplicationStatus.Submitted, user);
-            application.Submitted = _clock.Now;
-            var (saved, _) = await SaveSectionsAsync(id, ChangedBeforeSubmitMessage,
-                (ApplicationSection.ApplicantInformation, applicantInformationVersion),
-                (ApplicationSection.ResidenceHistory, residenceHistoryVersion));
-            return Logged(saved, "Submit", id, user);
+            catch (Exception ex) when (SqlErrors.IsDeadlock(ex))
+            {
+                // Submit and approval can lock the same unit while checking its lease; ask the applicant to retry.
+                db.ChangeTracker.Clear();
+                return Logged(ServiceResult.Stale("Another change to this unit was saved at the same time. Reload the page and try again."),
+                    "Submit", id, user);
+            }
         }
 
         // ---------------- Applicants on an application ----------------
@@ -547,40 +596,49 @@ namespace Troy_Web_Property_Manager.Services
                 return Logged(ServiceResult.Error("There's no applicant account with that email.", field), "Add applicant", id, user);
             }
 
-            if (await db.ApplicationApplicants.AnyAsync(m => m.RentalApplicationId == id && m.Applicant.UserId == userId))
-            {
-                return Logged(ServiceResult.Error("They're already on this application.", field), "Add applicant", id, user);
-            }
-            var hasOtherOpen = await db.RentalApplications.AnyAsync(a => a.Id != id && a.UnitId == application!.UnitId
-                && OpenStatuses.Contains(a.Status) && a.ApplicationApplicants.Any(m => m.Applicant.UserId == userId));
-            if (hasOtherOpen)
-            {
-                return Logged(ServiceResult.Error("They already have an open application for this unit.", field), "Add applicant", id, user);
-            }
-
-            application!.ApplicationApplicants.Add(new ApplicationApplicant
-            {
-                Applicant = await GetOrCreateProfileAsync(userId),
-                Added = _clock.Now,
-                AddedByUser = user.Id
-            });
-            // The application row doesn't change otherwise, so force the status check: no adding to one that was just
-            // submitted.
-            GuardStatus(application);
-            ServiceResult result;
             try
             {
-                result = await SaveApplicationAsync();
+                // StartAsync also uses Serializable, so neither an added membership nor a new application can slip
+                // past the other's open-application check for this applicant and unit.
+                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+                if (await db.ApplicationApplicants.AnyAsync(m => m.RentalApplicationId == id && m.Applicant.UserId == userId))
+                {
+                    return Logged(ServiceResult.Error("They're already on this application.", field), "Add applicant", id, user);
+                }
+                var hasOtherOpen = await db.RentalApplications.AnyAsync(a => a.Id != id && a.UnitId == application!.UnitId
+                    && OpenStatuses.Contains(a.Status) && a.ApplicationApplicants.Any(m => m.Applicant.UserId == userId));
+                if (hasOtherOpen)
+                {
+                    return Logged(ServiceResult.Error("They already have an open application for this unit.", field), "Add applicant", id, user);
+                }
+
+                application!.ApplicationApplicants.Add(new ApplicationApplicant
+                {
+                    Applicant = await GetOrCreateProfileAsync(userId),
+                    Added = _clock.Now,
+                    AddedByUser = user.Id
+                });
+                // The application row doesn't change otherwise, so force the status check: no adding to one that was just
+                // submitted.
+                GuardStatus(application);
+                var result = await SaveApplicationAsync();
+                if (!result.Succeeded) return Logged(result, "Add applicant", id, user);
+                await transaction.CommitAsync();
+                _logger.LogInformation("User {UserId} added user {AddedUserId} to application {ApplicationId}.", user.Id, userId, id);
+                return result;
             }
             catch (DbUpdateException ex) when (SqlErrors.IsUniqueViolation(ex))
             {
                 // Someone added them (or created their profile) at the same moment.
                 db.ChangeTracker.Clear();
-                result = ServiceResult.Stale();
+                return Logged(ServiceResult.Stale(), "Add applicant", id, user);
             }
-            if (!result.Succeeded) return Logged(result, "Add applicant", id, user);
-            _logger.LogInformation("User {UserId} added user {AddedUserId} to application {ApplicationId}.", user.Id, userId, id);
-            return result;
+            catch (Exception ex) when (SqlErrors.IsDeadlock(ex))
+            {
+                db.ChangeTracker.Clear();
+                return Logged(ServiceResult.Stale("Another application update was saved at the same time. Reload and try again."),
+                    "Add applicant", id, user);
+            }
         }
 
         /// <summary>
@@ -723,6 +781,10 @@ namespace Troy_Web_Property_Manager.Services
         {
             var action = $"Review ({model.Outcome})";
             if (!user.IsManager) return Logged(ServiceResult.Forbid("Only property managers can review applications."), action, id, user);
+            if (!model.Outcome.HasValue || !Enum.IsDefined(typeof(ReviewOutcome), model.Outcome.Value))
+            {
+                return Logged(ServiceResult.Error("Choose a valid outcome.", nameof(model.Outcome)), action, id, user);
+            }
 
             try
             {
@@ -1014,7 +1076,23 @@ namespace Troy_Web_Property_Manager.Services
         private async Task<(ServiceResult Result, Guid Version)> SaveSectionsAsync(int id, string staleMessage,
             params (ApplicationSection Section, Guid Expected)[] sections)
         {
-            await using var transaction = await db.Database.BeginTransactionAsync();
+            return await SaveSectionsWithCheckAsync(id, staleMessage, IsolationLevel.ReadCommitted, null, sections);
+        }
+
+        /// <summary>
+        /// The overload with a pre-save check lets Submit check unit availability under the same serializable
+        /// transaction as its status change and section-version swaps.
+        /// </summary>
+        private async Task<(ServiceResult Result, Guid Version)> SaveSectionsWithCheckAsync(int id, string staleMessage,
+            IsolationLevel isolationLevel, Func<Task<ServiceResult?>>? beforeSave,
+            params (ApplicationSection Section, Guid Expected)[] sections)
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(isolationLevel);
+            if (beforeSave is not null && await beforeSave() is { } validationError)
+            {
+                return (validationError, Guid.Empty);
+            }
+
             var next = Guid.NewGuid();
             foreach (var (section, expected) in sections)
             {
