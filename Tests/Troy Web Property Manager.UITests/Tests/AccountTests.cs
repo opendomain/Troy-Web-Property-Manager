@@ -29,6 +29,29 @@ namespace Troy_Web_Property_Manager.UITests.Tests
         }
 
         [Fact]
+        public void SignUp_WhenTheEmailIsSent_SaysToCheckTheInbox_AndDoesntShowTheLink()
+        {
+            using var browser = app.NewBrowser();
+            var user = new TestUser($"mailed-{Guid.NewGuid().ToString("N")[..10]}@uitest.local", UiFixture.Password, AppRoles.Applicant);
+
+            new RegisterPage(browser).Open().Submit(user.Email, user.Password, role: user.Role);
+            browser.WaitUntil(() => browser.PathAndQuery.StartsWith("/Identity/Account/RegisterConfirmation"), "the registration confirmation page");
+
+            // One confirmation email went out, and the page only points to it - the link is never on the page.
+            browser.WaitForText($"We sent a confirmation email to {user.Email}.");
+            Assert.DoesNotContain("We couldn't send a confirmation email", browser.PageText);
+            Assert.Empty(browser.Driver.FindElements(By.LinkText("Confirm your account")));
+            var sent = Assert.Single(app.Emails.To(user.Email));
+            Assert.Equal("Confirm your email", sent.Subject);
+
+            // The emailed link confirms the account.
+            browser.Driver.Navigate().GoToUrl(app.Emails.ConfirmationLink(user.Email));
+            browser.WaitForText("Thank you for confirming your email.");
+            browser.LogInAs(user);
+            Assert.Contains("My applications", new NavBar(browser).Links);
+        }
+
+        [Fact]
         public void SignUp_WhenTheEmailCantBeSent_ShowsTheConfirmationLinkOnThePage()
         {
             using var browser = app.NewBrowser();
