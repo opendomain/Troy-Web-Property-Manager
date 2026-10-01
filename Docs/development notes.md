@@ -6,7 +6,7 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ## How to read it
 
-- **Step header:** `Step N: <commit message>`, with the pull request underneath.
+- **Step header:** `Step N: <commit message>`.
 - **Assessment** lists the parts of the PDF the step works on, using the PDF's own numbering:
 
   | Reference | What it covers |
@@ -20,8 +20,7 @@ A walk through every check-in in the repository, oldest first. Each step is one 
   | Deliverables | README.md with setup instructions |
 
 - **File status:** **A** = added, **M** = modified, **D** = deleted, **R** = renamed.
-- Merge commits (one per pull request) add no changes of their own, so they aren't steps; the pull request number is
-  shown on each step instead. Steps 3, 4 and 13 went straight to main without a pull request.
+- Merge commits (one per pull request) add no changes of their own, so they aren't steps.
 - Third-party files under `wwwroot/lib` are summarised, not listed one by one.
 
 > **Security note found while writing this:** Step 5 committed a real SendGrid API key in `Docs/Email Setup.txt`.
@@ -31,8 +30,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 ## Phase 1: Project setup
 
 ### Step 1: Initial Commit
-
-*(before pull requests)*
 
 **Assessment:** Technical 1, 2, 2.a, 3 - the starting point: ASP.NET Core on .NET 10, Identity, SQL Server.
 
@@ -60,8 +57,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 2: Register Email SendGrid
 
-*PR #1*
-
 **Assessment:** Functional 1.a (sign up).
 
 **Why:** The template sets RequireConfirmedAccount, so a new user must click an emailed link before logging in - but the default Identity UI only has a do-nothing email sender. A real IEmailSender makes sign-up actually work.
@@ -74,8 +69,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 3: Add installation instructions to README
 
-*(direct to main)*
-
 **Assessment:** Deliverables (README with setup instructions).
 
 **Files:**
@@ -84,8 +77,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 4: Revise installation section in README.md
 
-*(direct to main)*
-
 **Assessment:** Deliverables.
 
 **Files:**
@@ -93,8 +84,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `README.md` - Restructured the install list into nested steps.
 
 ### Step 5: add Notes for setting up Email service provider
-
-*PR #2*
 
 **Assessment:** Functional 1.a; Considerations (traceability of decisions).
 
@@ -106,8 +95,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 6: Create DB in application
 
-*PR #3*
-
 **Assessment:** Technical 2.b.i (create the database on start).
 
 **Files:**
@@ -118,8 +105,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 7: Create Troy Web Property Manager TODO.md
 
-*PR #4*
-
 **Assessment:** all - a checklist made from the PDF.
 
 **Files:**
@@ -128,8 +113,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 8: Create Application Status State Diagram.png
 
-*PR #4*
-
 **Assessment:** Functional 5.b (statuses, terminal states), Challenge a/b (submit, withdraw, return, resubmit).
 
 **Files:**
@@ -137,8 +120,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **A** `Docs/Application Status State Diagram.png` - The allowed status changes, designed before any code. The state machine in Rules/ApplicationWorkflow.cs implements this diagram.
 
 ### Step 9: Mock ups and DB ER
-
-*PR #4*
 
 **Assessment:** Functional 1-6 (entities and screens); Considerations (design before build).
 
@@ -154,8 +135,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 10: Hand drawn analysis
 
-*PR #4*
-
 **Assessment:** as Step 9.
 
 **Files:**
@@ -163,8 +142,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **A** `Docs/UI/Application Status.jpg, DB Entities.jpg, Wireframes 01.jpg, Wireframes 02.jpg` - The original whiteboard sketches the diagrams and mock-ups were drawn from, kept as the raw source.
 
 ### Step 11: Add EF migration for property management schema
-
-*PR #5*
 
 **Assessment:** Technical 3.a (EF Core code-first migrations); Functional 2 and 4 (the entities).
 
@@ -180,16 +157,12 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 12: Change name of DB
 
-*PR #5*
-
 **Files:**
 
 - **M** `appsettings.json` - Readable database name "Troy_Web_Property_Manager_DB" instead of the template's GUID name.
 - **M** `Troy Web Property Manager.csproj` - UserSecretsId renamed to match.
 
 ### Step 13: Create DB Migration Commands.txt
-
-*(direct to main)*
 
 **Files:**
 
@@ -198,8 +171,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 ## Phase 3: Identity, roles and the MVC skeleton
 
 ### Step 14: Add Login Scaffolding
-
-*PR #6*
 
 **Assessment:** Functional 1.a (sign up, log in, log out).
 
@@ -212,8 +183,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 15: Add Model Roles
 
-*PR #6*
-
 **Assessment:** Functional 1.a.i (choose Applicant or Property Manager at sign-up); Technical 2.a (Identity roles).
 
 **Files:**
@@ -224,8 +193,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Program.cs` - `AddRoles<IdentityRole>()` so roles work at all; roles created on startup.
 
 ### Step 16: Add Role Navigation to Layout
-
-*PR #7*
 
 **Assessment:** Challenge ("the permissions in the controllers and the UI reflect this"); Technical 1.a (MVC).
 
@@ -238,8 +205,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 17: Layout
 
-*PR #7*
-
 **Assessment:** Technical 1.b (modals filled from partial views; re-render on error, close and refresh on success).
 
 **Files:**
@@ -249,8 +214,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `wwwroot/js/site.js` - The modal plumbing: data-modal-url loads a partial into the modal; data-modal-form posts with fetch; an HTML response means "redraw with errors", JSON means "close and refresh this part of the page". Driven by data- attributes, so new modals need no new JavaScript.
 
 ### Step 18: Default controllers and Data Model
-
-*PR #7*
 
 **Assessment:** Technical 1.a; Challenge (permissions); Technical 2.b.ii (lookups); Functional 2.c, 4, 5.
 
@@ -275,8 +238,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 19: Fix Confirm
 
-*PR #8*
-
 **Assessment:** Technical 1.a (partial views), 1.b (modals).
 
 **Files:**
@@ -286,8 +247,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Views/_ViewImports.cshtml` - Imports the ViewModels namespace.
 
 ### Step 20: Properties
-
-*PR #9*
 
 **Assessment:** Functional 2.b (managers add/edit/remove properties and units through modals), 2.c (inactive unit types), 2.d (lease term, "available"); Technical 1.b.
 
@@ -301,8 +260,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 21: Update Program.cs
 
-*PR #10*
-
 **Files:**
 
 - **M** `Program.cs` - Adds app.UseAuthentication(). Without it the auth cookie was never read, so [Authorize] treated everyone as signed out.
@@ -310,8 +267,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 ## Phase 4: Rental applications
 
 ### Step 22: Application
-
-*PR #11*
 
 **Assessment:** Functional 4 (application), 5.a/5.b (review outcomes and statuses).
 
@@ -327,8 +282,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 23: Units
 
-*PR #12*
-
 **Assessment:** Functional 2.b (applicants browse available units and start an application), 2.d.
 
 **Files:**
@@ -339,8 +292,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `ViewModels/PropertyViewModels.cs`, **M** `Views/Units/Index.cshtml` - The page and its model.
 
 ### Step 24: Create Edit Model
-
-*PR #13*
 
 **Assessment:** Functional 4.a-4.d; Technical 1.a/1.b.
 
@@ -357,8 +308,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 25: Add History
 
-*PR #14*
-
 **Assessment:** Functional 5.a (review modal), 5.c (history: who, when, comment), 2.d/4.e (lease on approval, no second lease); Technical 1.a (view components are required).
 
 **Files:**
@@ -371,8 +320,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 26: Application LIst Filtered
 
-*PR #15*
-
 **Assessment:** Functional 6.a (list filtered by status and property).
 
 **Files:**
@@ -382,8 +329,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 27: Fixes Step 1
 
-*PR #16*
-
 **Assessment:** Functional 6.a ("filtering done in the database, not in memory").
 
 **Files:**
@@ -392,8 +337,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Views/Applications/Index.cshtml` - Labels, Clear link, role-based title.
 
 ### Step 28: Fix field names
-
-*PR #16*
 
 **Assessment:** Functional 4.a; Considerations (names that match the domain).
 
@@ -412,8 +355,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 29: Make separate files
 
-*PR #16*
-
 **Assessment:** Considerations (conventions: one type per file).
 
 **Files:**
@@ -427,8 +368,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **D** `Troy Web Technical Assessment.pdf` - Duplicate of Docs/ removed.
 
 ### Step 30: moar fixes
-
-*PR #16*
 
 **Assessment:** Functional 4.e/5 (no second lease, safe concurrent changes); Considerations (production-ready).
 
@@ -445,8 +384,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 31: Add Test Project
 
-*PR #17*
-
 **Assessment:** Technical 2.c (unit tests for business logic).
 
 **Files:**
@@ -462,8 +399,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 32: Add Seed Data
 
-*PR #18*
-
 **Assessment:** Technical 2.b.ii and 2.b.ii.1 (seed idempotently with Bogus: managers, applicants, properties, units, applications in every status).
 
 **Files:**
@@ -474,8 +409,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Troy Web Property Manager.csproj` - Adds the Bogus package.
 
 ### Step 33: Expand all Arrow functions
-
-*PR #19*
 
 **Assessment:** Considerations (one consistent, readable style).
 
@@ -493,8 +426,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - `Tests/.../DemoDataSeederTests.cs, ApplicationWorkflowTests.cs, LeaseRulesTests.cs, UnitTypeRulesTests.cs, ApplicationServiceTests.cs, PropertyServiceTests.cs, ViewModelValidationTests.cs`
 
 ### Step 34: Add comments
-
-*PR #20*
 
 **Assessment:** Considerations ("be ready to explain the rationale behind your design decisions").
 
@@ -521,8 +452,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 35: add constraints for bedrooms and dates
 
-*PR #21*
-
 **Assessment:** Technical 3.a; Considerations (the database protects its own data, not just the UI).
 
 **Files:**
@@ -533,8 +462,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 36: minimum bedrooms
 
-*PR #21*
-
 **Assessment:** Functional 2.b (applicants browse available units).
 
 **Files:**
@@ -543,8 +470,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Tests/.../PropertyServiceTests.cs` - Filter tests.
 
 ### Step 37: add index
-
-*PR #21*
 
 **Assessment:** Functional 2.d/4.e (the "active lease today" check); Considerations (performance).
 
@@ -557,8 +482,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 38: fix forbidden and conflict outcomes
 
-*PR #22*
-
 **Assessment:** Challenge (permissions); Functional 4.d ("controllers reject posts that are not allowed").
 
 **Files:**
@@ -570,8 +493,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 39: handle 409 conflicts in modals
 
-*PR #22*
-
 **Assessment:** Technical 1.b.
 
 **Files:**
@@ -581,8 +502,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `wwwroot/js/site.js` - Redraws the partial on 409 as well; posts the clicked button with the form.
 
 ### Step 40: refresh only the edited property card
-
-*PR #22*
 
 **Assessment:** Technical 1.b ("refresh the affected part of the page").
 
@@ -595,8 +514,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 41: show submission blockers on summary
 
-*PR #22*
-
 **Assessment:** Functional 4.b.ii (Submit only once both sections are saved), 4.e (active lease).
 
 **Files:**
@@ -606,8 +523,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **A** `Tests/.../Rules/SubmissionRulesTests.cs`, **M** `Tests/.../ApplicationServiceTests.cs`
 
 ### Step 42: Fix failed save and race condition
-
-*PR #23*
 
 **Assessment:** Technical 1.b; Functional 2.b; Considerations (production-ready).
 
@@ -623,15 +538,11 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 43: Fix title
 
-*PR #23*
-
 **Files:**
 
 - **M** `Pages/Shared/_Layout.cshtml` - "Troy Web Property Manager" (spaces) in the title, brand and footer instead of the assembly name with underscores.
 
 ### Step 44: Add warning to Readme
-
-*PR #23*
 
 **Assessment:** Deliverables; Functional 1.a.i.
 
@@ -641,15 +552,11 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 45: Fix ignored files
 
-*PR #23*
-
 **Files:**
 
 - **M** `.gitignore` - Ignore `*.user`, IDE folders, test results, coverage, publish output and logs.
 
 ### Step 46: Validate email sender
-
-*PR #24*
 
 **Assessment:** Functional 1.a.
 
@@ -659,8 +566,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 47: Change to Async await
 
-*PR #24*
-
 **Assessment:** Considerations (conventions).
 
 **Files:**
@@ -668,8 +573,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Program.cs` - async Main, MigrateAsync and async seeding, replacing the blocking .GetAwaiter().GetResult() calls.
 
 ### Step 48: Fix code review findings and redact SendGrid key
-
-*PR #24*
 
 **Assessment:** Functional 6.a (who sees what); Considerations; security.
 
@@ -689,8 +592,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 49: Add Property Manager Notes
 
-*PR #26*
-
 **Assessment:** Bonus 3 (notes visible and editable only by managers, never rendered or returned to an applicant).
 
 **Files:**
@@ -706,8 +607,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 50: Manager Review Queue
 
-*PR #27*
-
 **Assessment:** Bonus 2 (claim a submitted application - Under Review - and release it back to the queue).
 
 **Files:**
@@ -722,8 +621,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Tests/.../CheckConstraintTests.cs, DemoDataSeederTests.cs, ApplicationWorkflowTests.cs, ApplicationServiceTests.cs, TestDatabase.cs`
 
 ### Step 51: Allow save application even if invalid
-
-*PR #28*
 
 **Assessment:** Bonus 4 (save a section even when invalid; the Summary lists everything blocking submission; rules defined once per section; errors on their fields).
 
@@ -741,8 +638,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 52: allow multiple applicants
 
-*PR #29*
-
 **Assessment:** Bonus 5 (several applicants per application; ownership for all of them; saves to different sections don't interfere; a second save to the same section is rejected as stale).
 
 **Files:**
@@ -759,8 +654,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 53: Fix issues with multiple applicants
 
-*PR #29*
-
 **Assessment:** Functional 2.d (a lease that "covers today" - whose today?); Bonus 5.
 
 **Files:**
@@ -773,8 +666,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **A** `Tests/.../BusinessClockTests.cs`, **M** `Tests/.../ApplicationServiceTests.cs`
 
 ### Step 54: Sort applications via SQL
-
-*PR #30*
 
 **Assessment:** Bonus 1 (paging and sorting in the database; a reusable grid view component driven by a JSON endpoint returning the page and the filtered total; documented with OpenAPI).
 
@@ -794,8 +685,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 55: Update README.md
 
-*PR #30*
-
 **Assessment:** Deliverables.
 
 **Files:**
@@ -806,8 +695,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 56: ui fixes and email
 
-*PR #31*
-
 **Assessment:** Technical 1.c (styling); Functional 1.a.
 
 **Files:**
@@ -816,8 +703,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Services/EmailSender.cs` - The Development log shows the email decoded, so the confirmation link can be copied without `&amp;` breaking it.
 
 ### Step 57: update Styles for UI
-
-*PR #32*
 
 **Assessment:** Technical 1.c ("structure and style the web application to your liking using best practices").
 
@@ -830,8 +715,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 58: Add Font Awesome
 
-*PR #32*
-
 **Assessment:** Technical 1.c.
 
 **Files:**
@@ -841,8 +724,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `wwwroot/js/grid.js, wwwroot/css/site.css` - Sort arrows in the grid become icons.
 
 ### Step 59: Add sorting to units
-
-*PR #33*
 
 **Assessment:** Functional 2.b (browse available units).
 
@@ -854,8 +735,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 - **M** `Tests/.../PropertyServiceTests.cs` - Every column, both directions, with ties.
 
 ### Step 60: Add UI Tests
-
-*PR #34*
 
 **Assessment:** every functional requirement and bonus item checked end to end in a browser; Technical 2.c.
 
@@ -876,8 +755,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 61: Add Logging
 
-*PR #35*
-
 **Assessment:** Considerations ("clean, robust, and ready for a production environment"); the TODO list's "Logging" item.
 
 **Why:** Until now only the Identity pages, EmailSender and the demo seeding logged anything - the services, where every business action happens, were silent. In production you need to answer "who changed this application, and why was that refused?" from the logs. Logging follows the pattern already in the code: `ILogger<T>` injected through the constructor, structured message templates with named placeholders ({ApplicationId}, {UserId}), Information for normal actions, Warning for the unusual, Error with the exception for failures. Only ids are logged - never an applicant's details or the managers' private notes (Bonus 3).
@@ -896,8 +773,6 @@ A walk through every check-in in the repository, oldest first. Each step is one 
 
 ### Step 62: Create development notes.md
 
-*PR #36*
-
 **Assessment:** Considerations ("explainable design decisions"); Deliverables.
 
 **Files:**
@@ -911,11 +786,7 @@ check-then-write races that only show up under concurrent requests. Each fix kee
 service enforces the rule itself (never trusting the page or the controller), and a race the database stops becomes a
 friendly "reload and try again" message instead of a 500.
 
-Steps 63-68 were merged in PR #37. Steps 69-71 came from a full-code review afterwards and were committed straight to `main`.
-
 ### Step 63: Submit from Summary Only
-
-*PR #37*
 
 **Assessment:** Functional 4.b.ii (Submit from the read-only Summary); Considerations (security).
 
@@ -929,8 +800,6 @@ meant to check first.
 
 ### Step 64: Validate review outcomes against the defined enum values.
 
-*PR #37*
-
 **Assessment:** Functional 5.a (Approve / Return / Deny); Considerations (security).
 
 **Why:** Model binding happily turns `Outcome=99` into a `ReviewOutcome` that isn't one of the three. `[Required]` only
@@ -942,8 +811,6 @@ caught a missing value, so an undefined outcome reached the review logic.
 - **M** `Services/ApplicationService.cs` - ReviewAsync checks the outcome again, since the service doesn't trust its caller.
 
 ### Step 65: Make the submit lease check atomic with submission
-
-*PR #37*
 
 **Assessment:** Functional 4.e (no submission for a leased unit); 2.d (one active lease); Considerations (concurrency).
 
@@ -959,8 +826,6 @@ asked to retry.
 
 ### Step 66: Protect "one open application per applicant per unit" rule for co-applicants
 
-*PR #37*
-
 **Assessment:** Functional 3 (rental application); Bonus 5 (multiple applicants); Considerations (concurrency).
 
 **Why:** The filtered unique index only covers the applicant who *started* an application. Since Bonus 5, someone can
@@ -973,8 +838,6 @@ back up. Starting an application and being added to another one at the same mome
 
 ### Step 67: Normalize or reject unknown section values
 
-*PR #37*
-
 **Assessment:** Functional 4.b (one section at a time); Considerations (security).
 
 **Why:** `?section=99` bound to an `ApplicationSection` that isn't one of the three, and the editor tried to show it.
@@ -985,8 +848,6 @@ back up. Starting an application and being added to another one at the same mome
 - **M** `Services/ApplicationService.cs` - GetEditorAsync falls back to the Summary for an undefined section, in case another caller passes one.
 
 ### Step 68: Review follow-ups
-
-*PR #37*
 
 **Assessment:** Bonus 5; Functional 4.b.ii, 4.e; Technical 2.c (unit tests); Considerations (concurrency).
 
@@ -1010,8 +871,6 @@ back up. Starting an application and being added to another one at the same mome
 
 ### Step 69: Fix adding a unit while its property is removed
 
-*Commit 193dd8e on main*
-
 **Assessment:** Functional 2.b (manage units); Considerations (concurrency, error handling).
 
 **Why:** SaveUnitAsync checks the property exists and then inserts the unit. If another manager removes the property
@@ -1027,8 +886,6 @@ write path without a friendly fallback for a race.
 
 ### Step 70: Trim input before the too-long check
 
-*Commit d09bd02 on main*
-
 **Assessment:** Functional 4.b.i, 4.c; Bonus 4 (save even when invalid).
 
 **Why:** Sections save even with errors, except text too long for its column (Step 51). That length check ran on the
@@ -1041,8 +898,6 @@ trimmed value that gets stored would fit.
 - **M** `Tests/.../Services/ApplicationServiceTests.cs` - Applicant information and a residence that fit once trimmed are saved, trimmed.
 
 ### Step 71: Retry Add applicant after losing a race
-
-*Commit af10225 on main*
 
 **Assessment:** Bonus 5 (multiple applicants); Considerations (concurrency).
 
