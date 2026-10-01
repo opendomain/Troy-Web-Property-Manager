@@ -4,6 +4,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 
+// Each collection starts its own app, browsers and database; one at a time keeps the machine (and LocalDB) calm.
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
+
 namespace Troy_Web_Property_Manager.UITests.Infrastructure
 {
     /// <summary>A login the tests can use.</summary>
@@ -17,8 +20,18 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     /// Tests get a fresh browser each (<see cref="NewBrowser"/>), and create their own users, properties and units
     /// with unique names, so they don't depend on each other or on the order they run in.
     /// </summary>
-    public sealed class UiFixture : IAsyncLifetime
+    public class UiFixture : IAsyncLifetime
     {
+        public UiFixture() : this(new AppFactory())
+        {
+        }
+
+        /// <summary>For a fixture that runs the app with different settings (xUnit allows one public constructor).</summary>
+        protected UiFixture(AppFactory factory)
+        {
+            Factory = factory;
+        }
+
         /// <summary>Password for every user the tests create.</summary>
         public const string Password = "UiTest#2026";
 
@@ -26,7 +39,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
         public static readonly TestUser SeededManager = new("manager1@example.com", DemoDataSeeder.Password, AppRoles.PropertyManager);
         public static readonly TestUser SeededApplicant = new("applicant1@example.com", DemoDataSeeder.Password, AppRoles.Applicant);
 
-        public AppFactory Factory { get; } = new();
+        public AppFactory Factory { get; }
 
         /// <summary>Where the app is listening, e.g. http://127.0.0.1:54321 (no trailing slash).</summary>
         public string BaseUrl { get; private set; } = "";
@@ -122,10 +135,26 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
         }
     }
 
+    /// <summary>
+    /// A second copy of the app with no SendGrid key configured (a fresh clone, or a server someone forgot to set up).
+    /// Register skips the email sender entirely then, so this is the only way to reach that branch. It needs its own
+    /// app because the key is read once, at startup.
+    /// </summary>
+    public sealed class NoSendGridKeyUiFixture() : UiFixture(new AppFactory(sendGridApiKey: ""))
+    {
+    }
+
     /// <summary>Every UI test class is in this collection, so they share one app and run one at a time.</summary>
     [CollectionDefinition(Name)]
     public sealed class UiCollection : ICollectionFixture<UiFixture>
     {
         public const string Name = "UI";
+    }
+
+    /// <summary>Tests that need the app running without a SendGrid key (<see cref="NoSendGridKeyUiFixture"/>).</summary>
+    [CollectionDefinition(Name)]
+    public sealed class NoSendGridKeyUiCollection : ICollectionFixture<NoSendGridKeyUiFixture>
+    {
+        public const string Name = "UI (no SendGrid key)";
     }
 }

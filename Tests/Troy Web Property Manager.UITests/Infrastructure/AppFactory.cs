@@ -19,14 +19,17 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     ///   database is never touched - the fixture checks the connection before any test runs.</item>
     ///   <item>Email: <see cref="CapturingEmailSender"/> keeps the messages in memory, so registration tests can
     ///   follow the confirmation link, and nothing is ever sent through SendGrid (even with a key in user secrets).</item>
-    ///   <item>SendGrid:ApiKey is set to a dummy value. Register only calls the email sender when a key is
-    ///   configured (with none it shows the link on the page instead), so the key has to look set for the capturing
-    ///   sender to see anything. It replaces any real key from user secrets, so even if something resolved the real
-    ///   sender, SendGrid would refuse it.</item>
+    ///   <item>SendGrid:ApiKey is set to <see cref="SendGridApiKey"/> - a dummy value by default. Register only calls
+    ///   the email sender when a key is configured (with none it shows the link on the page instead), so the key has
+    ///   to look set for the capturing sender to see anything. It replaces any real key from user secrets, so even if
+    ///   something resolved the real sender, SendGrid would refuse it. Pass "" to run the app with no key at all
+    ///   (see <see cref="NoSendGridKeyUiFixture"/>).</item>
     /// </list>
     /// </remarks>
-    public sealed class AppFactory : WebApplicationFactory<Program>
+    public sealed class AppFactory(string sendGridApiKey = "uitest-not-a-real-key") : WebApplicationFactory<Program>
     {
+        public string SendGridApiKey { get; } = sendGridApiKey;
+
         public string DatabaseName { get; } = $"TroyWebPM_UITests_{Guid.NewGuid():N}";
 
         public string ConnectionString =>
@@ -38,7 +41,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
         {
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:DefaultConnection", ConnectionString);
-            builder.UseSetting("SendGrid:ApiKey", "uitest-not-a-real-key");
+            builder.UseSetting("SendGrid:ApiKey", SendGridApiKey);
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IEmailSender>();
