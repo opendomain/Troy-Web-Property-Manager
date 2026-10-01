@@ -47,16 +47,25 @@ namespace Troy_Web_Property_Manager.UITests.Workflows
         }
 
         /// <summary>
-        /// Signs up through the real Register page with <paramref name="role"/>, then follows the link from the
-        /// confirmation email. Leaves the browser signed out, like a real new user.
+        /// Signs up through the real Register page with <paramref name="role"/>, then confirms the account: with
+        /// SendGrid configured (<see cref="UiFixture.SendGridConfigured"/>) by following the link in the email,
+        /// otherwise with the button the confirmation page shows instead. Leaves the browser signed out, like a real
+        /// new user.
         /// </summary>
         public static TestUser RegisterAndConfirm(this Browser browser, UiFixture app, string role)
         {
             var user = new TestUser($"signup-{Guid.NewGuid().ToString("N")[..10]}@uitest.local", UiFixture.Password, role);
             new RegisterPage(browser).Open().Submit(user.Email, user.Password, role: role);
-            browser.WaitUntil(() => browser.PathAndQuery.StartsWith("/Identity/Account/RegisterConfirmation"), "the registration confirmation page");
-            browser.Driver.Navigate().GoToUrl(app.Emails.ConfirmationLink(user.Email));
-            browser.WaitForText("Thank you for confirming your email.");
+            var confirmation = new RegisterConfirmationPage(browser).WaitUntilOpen();
+            if (confirmation.ShowsConfirmButton)
+            {
+                confirmation.Confirm();
+            }
+            else
+            {
+                browser.Driver.Navigate().GoToUrl(app.Emails.ConfirmationLink(user.Email));
+                browser.WaitForText("Thank you for confirming your email.");
+            }
             return user;
         }
     }

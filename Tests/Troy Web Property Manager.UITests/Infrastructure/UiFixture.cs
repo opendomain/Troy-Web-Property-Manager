@@ -33,6 +33,28 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
 
         public CapturingEmailSender Emails => Factory.Emails;
 
+        /// <summary>
+        /// Makes the app think SendGrid is configured, so Register emails the confirmation link (to
+        /// <see cref="Emails"/>, never SendGrid) instead of showing it on the page. With
+        /// <paramref name="sendingFails"/>, the send throws instead. Dispose to go back to no key.
+        /// Safe because the tests run one at a time.
+        /// </summary>
+        public IDisposable SendGridConfigured(bool sendingFails = false)
+        {
+            Factory.SendGrid.ApiKey = "SG.uitest-not-a-real-key";
+            Emails.FailSending = sendingFails;
+            return new Restore(() =>
+            {
+                Factory.SendGrid.ApiKey = "";
+                Emails.FailSending = false;
+            });
+        }
+
+        private sealed class Restore(Action restore) : IDisposable
+        {
+            public void Dispose() => restore();
+        }
+
         public async Task InitializeAsync()
         {
             // Kestrel on a free port instead of the in-memory TestServer, so a real browser can connect.

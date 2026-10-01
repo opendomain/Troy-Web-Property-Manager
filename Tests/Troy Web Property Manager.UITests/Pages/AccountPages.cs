@@ -64,6 +64,35 @@ namespace Troy_Web_Property_Manager.UITests.Pages
         public string Errors => string.Join("\n", browser.FindAll(By.CssSelector(".text-danger")).Select(e => e.Text));
     }
 
+    /// <summary>
+    /// The "check your email" page Register redirects to (Areas/Identity/Pages/Account/RegisterConfirmation). When the
+    /// email couldn't be sent - no SendGrid key, or sending failed - it shows the confirmation link as a button instead.
+    /// </summary>
+    public sealed class RegisterConfirmationPage(Browser browser)
+    {
+        public const string Path = "/Identity/Account/RegisterConfirmation";
+
+        private static readonly By ConfirmButton = By.XPath($"//main{Xp.Button("Confirm your account")}");
+
+        public RegisterConfirmationPage WaitUntilOpen()
+        {
+            browser.WaitUntil(() => browser.PathAndQuery.StartsWith(Path), "the registration confirmation page");
+            return this;
+        }
+
+        /// <summary>The "we couldn't send" warning, or null when the email went out.</summary>
+        public string? Warning => browser.FindAll(By.CssSelector("main .alert-warning")).Select(e => e.Text.Trim()).FirstOrDefault();
+
+        public bool ShowsConfirmButton => browser.FindAll(ConfirmButton).Count > 0;
+
+        /// <summary>Clicks "Confirm your account" and waits for Identity's confirm email page.</summary>
+        public void Confirm()
+        {
+            browser.ClickAndWaitForPage(ConfirmButton);
+            browser.WaitForText("Thank you for confirming your email.");
+        }
+    }
+
     /// <summary>The menu bar in _Layout, the same for every page.</summary>
     public sealed class NavBar(Browser browser)
     {

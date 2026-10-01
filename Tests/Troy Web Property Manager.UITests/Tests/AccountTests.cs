@@ -28,13 +28,91 @@ namespace Troy_Web_Property_Manager.UITests.Tests
             Assert.Equal(expectedMenu, nav.Links);
         }
 
+        // ---------------- Confirmation email: sent, not configured, or failed ----------------
+
+        [Fact]
+        public void SignUp_WithoutASendGridKey_ShowsTheConfirmLinkOnThePage_InsteadOfEmailingIt()
+        {
+            // The fixture's default: no SendGrid key, like a fresh clone.
+            using var browser = app.NewBrowser();
+            var user = new TestUser($"nokey-{Guid.NewGuid().ToString("N")[..8]}@uitest.local", UiFixture.Password, AppRoles.Applicant);
+
+            new RegisterPage(browser).Open().Submit(user.Email, user.Password, role: user.Role);
+            var confirmation = new RegisterConfirmationPage(browser).WaitUntilOpen();
+
+            Assert.Equal($"We couldn't send a confirmation email to {user.Email}.", confirmation.Warning);
+            Assert.True(confirmation.ShowsConfirmButton);
+            Assert.Empty(app.Emails.To(user.Email));
+
+            confirmation.Confirm();
+            browser.LogInAs(user);
+            Assert.Equal($"Hello {user.Email}!", new NavBar(browser).Greeting);
+        }
+
+        [Fact]
+        public void SignUp_WhenTheEmailFailsToSend_ShowsTheConfirmLinkOnThePage()
+        {
+            using var sendGrid = app.SendGridConfigured(sendingFails: true);
+            using var browser = app.NewBrowser();
+            var user = new TestUser($"sendfail-{Guid.NewGuid().ToString("N")[..8]}@uitest.local", UiFixture.Password, AppRoles.PropertyManager);
+
+            new RegisterPage(browser).Open().Submit(user.Email, user.Password, role: user.Role);
+            var confirmation = new RegisterConfirmationPage(browser).WaitUntilOpen();
+
+            Assert.Equal($"We couldn't send a confirmation email to {user.Email}.", confirmation.Warning);
+            Assert.Empty(app.Emails.To(user.Email));
+
+            confirmation.Confirm();
+            browser.LogInAs(user);
+            Assert.Equal($"Hello {user.Email}!", new NavBar(browser).Greeting);
+        }
+
+        [Fact]
+        public void SignUp_WithASendGridKey_EmailsTheLink_AndDoesNotShowItOnThePage()
+        {
+            using var sendGrid = app.SendGridConfigured();
+            using var browser = app.NewBrowser();
+            var user = new TestUser($"emailed-{Guid.NewGuid().ToString("N")[..8]}@uitest.local", UiFixture.Password, AppRoles.Applicant);
+
+            new RegisterPage(browser).Open().Submit(user.Email, user.Password, role: user.Role);
+            var confirmation = new RegisterConfirmationPage(browser).WaitUntilOpen();
+
+            Assert.Contains($"We sent a confirmation email to {user.Email}.", browser.PageText);
+            Assert.Null(confirmation.Warning);
+            Assert.False(confirmation.ShowsConfirmButton);
+
+            browser.Driver.Navigate().GoToUrl(app.Emails.ConfirmationLink(user.Email));
+            browser.WaitForText("Thank you for confirming your email.");
+        }
+
+        [Fact]
+        public void TheConfirmLinkOnThePage_IsOnlyShownOnce_AndOnlyToTheBrowserThatRegistered()
+        {
+            // The link comes from TempData, not the email in the query string, so nobody can confirm someone
+            // else's account just by knowing the address.
+            using var browser = app.NewBrowser();
+            var email = $"once-{Guid.NewGuid().ToString("N")[..8]}@uitest.local";
+            new RegisterPage(browser).Open().Submit(email, UiFixture.Password, role: AppRoles.Applicant);
+            var confirmation = new RegisterConfirmationPage(browser).WaitUntilOpen();
+            Assert.True(confirmation.ShowsConfirmButton);
+            var confirmationUrl = browser.PathAndQuery;
+
+            browser.Reload();
+            Assert.False(confirmation.ShowsConfirmButton);
+
+            using var stranger = app.NewBrowser();
+            stranger.Go(confirmationUrl);
+            Assert.StartsWith(RegisterConfirmationPage.Path, stranger.PathAndQuery);
+            Assert.False(new RegisterConfirmationPage(stranger).ShowsConfirmButton);
+        }
+
         [Fact]
         public void LogIn_BeforeConfirmingTheEmail_IsRefused()
         {
             using var browser = app.NewBrowser();
             var email = $"unconfirmed-{Guid.NewGuid().ToString("N")[..8]}@uitest.local";
             new RegisterPage(browser).Open().Submit(email, UiFixture.Password, role: AppRoles.Applicant);
-            browser.WaitUntil(() => browser.PathAndQuery.StartsWith("/Identity/Account/RegisterConfirmation"), "the confirmation page");
+            new RegisterConfirmationPage(browser).WaitUntilOpen();
 
             var login = new LoginPage(browser).Open();
             login.Submit(email, UiFixture.Password);

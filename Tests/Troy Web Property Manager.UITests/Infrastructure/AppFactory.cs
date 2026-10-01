@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager.UITests.Infrastructure
 {
@@ -19,7 +21,10 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     ///   database is never touched - the fixture checks the connection before any test runs.</item>
     ///   <item>Email: <see cref="CapturingEmailSender"/> keeps the messages in memory, so registration tests can
     ///   follow the confirmation link, and nothing is ever sent through SendGrid (even with a key in user secrets).</item>
-    ///   <item>SendGrid:ApiKey is blanked as a second guard, in case anything resolves the real sender.</item>
+    ///   <item>The SendGrid settings: <see cref="SendGrid"/>, which starts with no API key, like a fresh clone. Register
+    ///   then shows the confirmation link on the page instead of emailing it. Tests that want the email path set a
+    ///   key with <see cref="UiFixture.SendGridConfigured"/>; it's never a real one, and it only reaches Register,
+    ///   since the real sender is swapped out above.</item>
     /// </list>
     /// </remarks>
     public sealed class AppFactory : WebApplicationFactory<Program>
@@ -31,6 +36,9 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
 
         public CapturingEmailSender Emails { get; } = new();
 
+        /// <summary>The settings the app sees. Changes take effect on the next request.</summary>
+        public SendGridOptions SendGrid { get; } = new();
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
@@ -40,6 +48,9 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
             {
                 services.RemoveAll<IEmailSender>();
                 services.AddSingleton<IEmailSender>(Emails);
+                // Hand out our own instance instead of the one bound from config, so tests can change it while running.
+                services.RemoveAll<IOptions<SendGridOptions>>();
+                services.AddSingleton(Options.Create(SendGrid));
             });
         }
     }

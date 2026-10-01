@@ -16,8 +16,12 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     {
         private readonly ConcurrentQueue<SentEmail> _sent = new();
 
+        /// <summary>When true, sending throws (like SendGrid being down) and nothing is captured.</summary>
+        public bool FailSending { get; set; }
+
         public Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
+            if (FailSending) throw new InvalidOperationException("Failed to send email (simulated by the UI tests).");
             _sent.Enqueue(new SentEmail(email, subject, htmlMessage));
             return Task.CompletedTask;
         }
