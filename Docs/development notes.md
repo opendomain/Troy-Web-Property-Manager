@@ -911,11 +911,11 @@ check-then-write races that only show up under concurrent requests. Each fix kee
 service enforces the rule itself (never trusting the page or the controller), and a race the database stops becomes a
 friendly "reload and try again" message instead of a 500.
 
-These steps are on the `FinalReview` branch and haven't been merged through a pull request yet.
+Steps 63-68 were merged in PR #37. Steps 69-71 came from a full-code review afterwards and were committed straight to `main`.
 
 ### Step 63: Submit from Summary Only
 
-*Branch FinalReview*
+*PR #37*
 
 **Assessment:** Functional 4.b.ii (Submit from the read-only Summary); Considerations (security).
 
@@ -929,7 +929,7 @@ meant to check first.
 
 ### Step 64: Validate review outcomes against the defined enum values.
 
-*Branch FinalReview*
+*PR #37*
 
 **Assessment:** Functional 5.a (Approve / Return / Deny); Considerations (security).
 
@@ -943,7 +943,7 @@ caught a missing value, so an undefined outcome reached the review logic.
 
 ### Step 65: Make the submit lease check atomic with submission
 
-*Branch FinalReview*
+*PR #37*
 
 **Assessment:** Functional 4.e (no submission for a leased unit); 2.d (one active lease); Considerations (concurrency).
 
@@ -959,7 +959,7 @@ asked to retry.
 
 ### Step 66: Protect "one open application per applicant per unit" rule for co-applicants
 
-*Branch FinalReview*
+*PR #37*
 
 **Assessment:** Functional 3 (rental application); Bonus 5 (multiple applicants); Considerations (concurrency).
 
@@ -973,7 +973,7 @@ back up. Starting an application and being added to another one at the same mome
 
 ### Step 67: Normalize or reject unknown section values
 
-*Branch FinalReview*
+*PR #37*
 
 **Assessment:** Functional 4.b (one section at a time); Considerations (security).
 
@@ -986,7 +986,7 @@ back up. Starting an application and being added to another one at the same mome
 
 ### Step 68: Review follow-ups
 
-*Branch FinalReview - not committed yet when this was written*
+*PR #37*
 
 **Assessment:** Bonus 5; Functional 4.b.ii, 4.e; Technical 2.c (unit tests); Considerations (concurrency).
 
@@ -1007,3 +1007,51 @@ back up. Starting an application and being added to another one at the same mome
 - **M** `Tests/.../Services/ApplicationServiceTests.cs` - Start retries after a deadlock, and after a unique-key error then a deadlock; losing every attempt is stale, not an exception. A deadlocked Submit rolls back the status and section versions so the same Summary can submit again. Submit reports section errors and the lease together. An undefined review outcome changes nothing. An undefined section opens the Summary.
 - **M** `Tests/.../Services/MultipleApplicantsTests.cs` - Adding someone who was added (not started) on another open application for the unit is rejected; a deadlocked add adds no one.
 - **M** `Tests/.../ViewModels/ViewModelValidationTests.cs` - An undefined review outcome is invalid.
+
+### Step 69: Fix adding a unit while its property is removed
+
+*Commit 193dd8e on main*
+
+**Assessment:** Functional 2.b (manage units); Considerations (concurrency, error handling).
+
+**Why:** SaveUnitAsync checks the property exists and then inserts the unit. If another manager removes the property
+in between, the foreign key stops the insert, but nothing caught that error, so the modal got a 500. It was the one
+write path without a friendly fallback for a race.
+
+**Files:**
+
+- **M** `Services/PropertyService.cs` - SaveUnitAsync catches the foreign-key error (SQL error 547) when adding a unit, logs a warning and returns not found - the same answer as when the property is already gone at the start.
+- **M** `Services/SqlErrors.cs` - IsReferenceConflict's comment now covers an insert whose parent row is gone, not just a delete.
+- **M** `Tests/.../FakeSqlErrors.cs` - A ReferenceConflict (547) constant.
+- **M** `Tests/.../Services/PropertyServiceTests.cs` - Adding a unit whose property is removed during the save is not found and saves nothing.
+
+### Step 70: Trim input before the too-long check
+
+*Commit d09bd02 on main*
+
+**Assessment:** Functional 4.b.i, 4.c; Bonus 4 (save even when invalid).
+
+**Why:** Sections save even with errors, except text too long for its column (Step 51). That length check ran on the
+posted text before it was trimmed, so 50 characters plus a trailing space was refused as too long even though the
+trimmed value that gets stored would fit.
+
+**Files:**
+
+- **M** `Services/ApplicationService.cs` - SaveApplicantInformationAsync and SaveResidenceAsync trim the posted text first, then check the length and save those trimmed values, so the check and the stored value always match.
+- **M** `Tests/.../Services/ApplicationServiceTests.cs` - Applicant information and a residence that fit once trimmed are saved, trimmed.
+
+### Step 71: Retry Add applicant after losing a race
+
+*Commit af10225 on main*
+
+**Assessment:** Bonus 5 (multiple applicants); Considerations (concurrency).
+
+**Why:** Step 66 put Add applicant in a Serializable transaction, so adding someone at the same moment as another
+request (often their own Apply) usually ends in a deadlock. Unlike Start (Step 68), Add applicant didn't retry, so the
+user got "reload and try again". Start's retry log also always said the user applied "twice at once", even when the
+other request was someone adding them to an application.
+
+**Files:**
+
+- **M** `Services/ApplicationService.cs` - AddApplicantAsync becomes a retry loop around AddApplicantOnceAsync, like StartAsync. A deadlock or unique-key error is retried up to three times. The retry sees what the other request did, so someone added at the same moment now gets "They're already on this application" instead of a stale result. Only if every attempt loses is it stale. MaxStartAttempts is renamed MaxRaceAttempts since both use it. Start's retry log now says the request lost a race with another request.
+- **M** `Tests/.../Services/MultipleApplicantsTests.cs` - "A deadlocked add adds no one" becomes "a deadlocked add retries and adds them". New: a unique-key race retries and adds them; losing every attempt is stale and adds no one.
