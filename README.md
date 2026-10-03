@@ -79,6 +79,14 @@ dotnet user-secrets set "SendGrid:FromEmail" "<verified-sender@your-domain>"
 dotnet user-secrets set "SendGrid:FromName" "Property Manager"
 ```
 
+**If the email can't be sent or doesn't arrive**, sign-up still works. When sending fails (or there's no key), the "Register confirmation" page shows a **Confirm your account** button instead.
+
+SendGrid can also accept an email that then lands in spam or never arrives, and the app can't detect that. So with `Registration:ShowConfirmationLink` set to `true` (the default in `appsettings.json`), the page shows the button even after the email was sent. That skips real email verification, so turn it off for a real deployment:
+
+```sh
+dotnet user-secrets set "Registration:ShowConfirmationLink" "false"
+```
+
 ## Running the tests
 
 There are two test projects. `dotnet test` from the repo root runs both.

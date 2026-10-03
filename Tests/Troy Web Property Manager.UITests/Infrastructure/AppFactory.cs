@@ -24,11 +24,17 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     ///   to look set for the capturing sender to see anything. It replaces any real key from user secrets, so even if
     ///   something resolved the real sender, SendGrid would refuse it. Pass "" to run the app with no key at all
     ///   (see <see cref="NoSendGridKeyUiFixture"/>).</item>
+    ///   <item>Registration:ShowConfirmationLink is set to <see cref="ShowConfirmationLink"/> - off by default, so
+    ///   the confirmation page only shows the link when the email fails (see <see cref="ShowConfirmationLinkUiFixture"/>
+    ///   for the app with it on).</item>
     /// </list>
     /// </remarks>
-    public sealed class AppFactory(string sendGridApiKey = "uitest-not-a-real-key") : WebApplicationFactory<Program>
+    public sealed class AppFactory(string sendGridApiKey = "uitest-not-a-real-key", bool showConfirmationLink = false)
+        : WebApplicationFactory<Program>
     {
         public string SendGridApiKey { get; } = sendGridApiKey;
+
+        public bool ShowConfirmationLink { get; } = showConfirmationLink;
 
         public string DatabaseName { get; } = $"TroyWebPM_UITests_{Guid.NewGuid():N}";
 
@@ -42,6 +48,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:DefaultConnection", ConnectionString);
             builder.UseSetting("SendGrid:ApiKey", SendGridApiKey);
+            builder.UseSetting("Registration:ShowConfirmationLink", ShowConfirmationLink.ToString());
             // Test runs shouldn't count as someone running the app.
             builder.UseSetting("Telemetry:StartupPingUrl", "");
             builder.UseSetting("Telemetry:GoatCounterUrl", "");

@@ -17,11 +17,17 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
     public class RegisterConfirmationModel : PageModel
     {
         public const string ConfirmationLinkKey = "ConfirmationLink";
+        public const string EmailFailedKey = "ConfirmationEmailFailed";
 
         public string? Email { get; set; }
 
-        /// <summary>Set only when the confirmation email failed to send.</summary>
+        /// <summary>
+        /// Set when the confirmation email failed to send, or when Registration:ShowConfirmationLink is on.
+        /// </summary>
         public string? ConfirmationLink { get; set; }
+
+        /// <summary>True when the confirmation email couldn't be sent.</summary>
+        public bool EmailFailed { get; set; }
 
         public IActionResult OnGet(string? email = null)
         {
@@ -32,6 +38,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
 
             Email = email;
             ConfirmationLink = TempData[ConfirmationLinkKey] as string;
+            EmailFailed = TempData[EmailFailedKey] is true;
             return Page();
         }
     }
