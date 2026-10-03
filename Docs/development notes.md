@@ -958,3 +958,17 @@ addresses (RegisterConfirmation?email=...) - so the counter was sending them to 
 - **M** `Pages/Shared/_GoatCounter.cshtml` - Renders nothing on any page in the Identity area.
 - **M** `Tests/.../UITests/Infrastructure/AppFactory.cs, UiFixture.cs` - An app fixture with the counter switched on (a .invalid URL).
 - **A** `Tests/.../UITests/Tests/TelemetryTests.cs` - Home and Privacy have the counter; the Identity pages don't. Reads the HTML with HttpClient, so the script never runs.
+
+### Step 75: Pre-fill section 1 for the starter only
+
+**Assessment:** Bonus 5 (multiple applicants); Considerations (privacy).
+
+**Why:** Until section 1 was saved on an application, it was pre-filled from the starter's profile for everyone on the
+application. That profile holds the name, phone, email and address the starter used on their other applications, so
+an applicant added to a new draft could read them before the starter had shared anything on this one.
+
+**Files:**
+
+- **M** `Services/ApplicationService.cs` - GetEditorAsync pre-fills an unsaved section 1 only when the viewer is the starter; anyone else sees it empty. Once it's saved on the application, everyone sees the saved copy as before.
+- **M** `Tests/.../Services/MultipleApplicantsTests.cs` - The starter gets the pre-fill, an added applicant doesn't, and both see section 1 once it's saved.
+- **M** `Docs/Bonus-MultipleApplicants.md`

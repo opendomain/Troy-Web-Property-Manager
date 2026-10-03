@@ -326,6 +326,30 @@ namespace Troy_Web_Property_Manager.Tests.Services
         }
 
         [Fact]
+        public async Task OnlyTheStarter_GetsSectionOnePrefilledFromTheirProfile()
+        {
+            // The starter's profile holds the details from an earlier application of theirs.
+            var earlier = await StartAsync(ApplicantUser, _db.SecondUnitId);
+            var (earlierInfo, _) = await VersionsAsync(earlier);
+            AssertOk(await Service().SaveApplicantInformationAsync(earlier, Info("Starter From Before"), earlierInfo, ApplicantUser));
+            var id = await SharedDraftAsync();
+
+            var starters = await Service().GetEditorAsync(id, null, ApplicantUser);
+            var others = await Service().GetEditorAsync(id, null, OtherApplicantUser);
+
+            Assert.Equal("Starter From Before", starters!.ApplicantInformation.Name);
+            Assert.Null(others!.ApplicantInformation.Name);
+            Assert.Null(others.ApplicantInformation.Phone);
+            Assert.Null(others.ApplicantInformation.Email);
+            Assert.Null(others.ApplicantInformation.CurrentAddress);
+
+            // Once section 1 is saved on this application, everyone on it sees what was saved.
+            var (info, _) = await VersionsAsync(id);
+            AssertOk(await Service().SaveApplicantInformationAsync(id, Info("Saved Here"), info, ApplicantUser));
+            Assert.Equal("Saved Here", (await Service().GetEditorAsync(id, null, OtherApplicantUser))!.ApplicantInformation.Name);
+        }
+
+        [Fact]
         public async Task OnlyTheStartersSaves_UpdateTheProfileUsedForPrefill()
         {
             var id = await SharedDraftAsync();
