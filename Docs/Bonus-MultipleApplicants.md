@@ -58,7 +58,7 @@ One row per applicant per application. The starter always has a row.
 |---|---|---|
 | `RentalApplicationID` | `int`, part of the primary key | FK `FK_ApplicationApplicant_RentalApplications` to `RentalApplications.id`, cascade delete. Applications are never deleted by the app. |
 | `ApplicantID` | `int`, part of the primary key | FK `FK_ApplicationApplicant_Applicant` to `Applicant.id`, no action. An applicant profile that's still on an application can't be deleted. |
-| `Added` | `datetime`, not null | When they were added, in server local time. For the starter, when the application was created. |
+| `Added` | `datetime`, not null | When they were added, in UTC. For the starter, when the application was created. |
 | `AddedByUser` | `nvarchar(450)`, not null | Identity user id of whoever added them. For the starter, themselves. No FK, the same as the other "by user" columns. |
 
 - **Primary key** `(RentalApplicationID, ApplicantID)`: an applicant can't be on the same application twice.

@@ -169,7 +169,7 @@ namespace Troy_Web_Property_Manager.ViewModels
         [BindNever] public string? Reviewer { get; set; }
 
         /// <summary>When it was claimed. Managers only, like <see cref="Reviewer"/>.</summary>
-        [BindNever] public DateTime? ReviewClaimed { get; set; }
+        [BindNever] public DateTimeOffset? ReviewClaimed { get; set; }
 
         /// <summary>True when the signed-in manager is the one who claimed it.</summary>
         [BindNever] public bool ClaimedByMe { get; set; }

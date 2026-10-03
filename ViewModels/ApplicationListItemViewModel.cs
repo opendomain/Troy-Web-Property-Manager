@@ -29,7 +29,10 @@ namespace Troy_Web_Property_Manager.ViewModels
             get { return Status.DisplayName(); }
         }
 
-        /// <summary>When it was last submitted, in server local time. Empty for a draft that was never submitted.</summary>
-        public DateTime? SubmittedAt { get; set; }
+        /// <summary>
+        /// When it was last submitted, in the business's time zone with its offset (e.g. 2026-10-03T14:05:00-04:00).
+        /// Empty for a draft that was never submitted.
+        /// </summary>
+        public DateTimeOffset? SubmittedAt { get; set; }
     }
 }

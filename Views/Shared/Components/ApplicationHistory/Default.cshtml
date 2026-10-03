@@ -15,7 +15,7 @@
                 {
                     <span>(@item.Outcome)</span>
                 }
-                @* ChangedAt is saved in server local time, so we show it as-is. *@
+                @* ChangedAt is stored in UTC; the service has already put it in the business's time zone. *@
                 <div class="small text-muted">@item.ChangedBy · @item.ChangedAt.ToString("g")</div>
                 @if (!string.IsNullOrEmpty(item.Comment))
                 {

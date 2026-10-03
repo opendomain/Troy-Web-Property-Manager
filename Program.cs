@@ -308,7 +308,7 @@ namespace Troy_Web_Property_Manager
             var seeded = await DemoDataSeeder.SeedAsync(
                     scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(),
                     scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(),
-                    scope.ServiceProvider.GetRequiredService<BusinessClock>().Now);
+                    scope.ServiceProvider.GetRequiredService<BusinessClock>());
 
             if (seeded)
             {

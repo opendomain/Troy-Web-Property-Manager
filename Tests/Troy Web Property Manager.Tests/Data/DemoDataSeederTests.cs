@@ -141,7 +141,8 @@ namespace Troy_Web_Property_Manager.Tests.Data
                 Assert.Equal((long)ApplicationStatus.Draft, timeline[0].NewStatus);
                 Assert.Equal(application.Created, timeline[0].ChangedDate);
                 Assert.Equal(application.Status, timeline[^1].NewStatus);
-                Assert.All(timeline, h => Assert.True(h.ChangedDate <= DateTime.Now));
+                // Stored in UTC.
+                Assert.All(timeline, h => Assert.True(h.ChangedDate <= DateTime.UtcNow));
 
                 for (var i = 1; i < timeline.Count; i++)
                 {
@@ -238,7 +239,9 @@ namespace Troy_Web_Property_Manager.Tests.Data
             {
                 foreach (var submit in application.ApplicationStatusHistories.Where(IsSubmit))
                 {
-                    Assert.DoesNotContain(leasesByUnit[application.UnitId], l => LeaseRules.IsActiveOn(l, submit.ChangedDate));
+                    // Lease dates are on the business's calendar (the seeder defaults to the server's zone); ChangedDate is UTC.
+                    var submittedOn = BusinessClock.Local.ToBusinessTime(submit.ChangedDate).DateTime;
+                    Assert.DoesNotContain(leasesByUnit[application.UnitId], l => LeaseRules.IsActiveOn(l, submittedOn));
                 }
             }
         }
@@ -263,7 +266,7 @@ namespace Troy_Web_Property_Manager.Tests.Data
                 Assert.All(application.Residences, r =>
                 {
                     Assert.True(r.MoveInDate <= r.MoveOutDate);
-                    Assert.True(r.MoveOutDate <= DateOnly.FromDateTime(application.Created));
+                    Assert.True(r.MoveOutDate <= DateOnly.FromDateTime(BusinessClock.Local.ToBusinessTime(application.Created).DateTime));
                 });
             });
         }

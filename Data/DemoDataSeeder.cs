@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Rules;
+using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager.Data
 {
@@ -37,8 +38,9 @@ namespace Troy_Web_Property_Manager.Data
         private const int ApplicationCount = 45;
 
         /// <summary>Seeds the demo data unless there are already properties. Returns false if it skipped.</summary>
-        /// <param name="now">"Now" in the business's time zone (BusinessClock); defaults to the server's clock.</param>
-        public static async Task<bool> SeedAsync(ApplicationDbContext db, UserManager<IdentityUser> userManager, DateTime? now = null)
+        /// <param name="clock">The business's clock (time zone); defaults to the server's. The demo timeline is planned in
+        /// the business's local time, so lease dates fall on its calendar, and each timestamp is stored in UTC.</param>
+        public static async Task<bool> SeedAsync(ApplicationDbContext db, UserManager<IdentityUser> userManager, BusinessClock? clock = null)
         {
             if (await db.Properties.AnyAsync()) return false;
 
@@ -54,7 +56,7 @@ namespace Troy_Web_Property_Manager.Data
 
             var properties = CreateProperties(faker, await db.UnitTypes.ToListAsync());
             var applicants = applicantUsers.Select(user => CreateApplicant(faker, user)).ToList();
-            var applications = new ApplicationGenerator(faker, managers, now ?? DateTime.Now)
+            var applications = new ApplicationGenerator(faker, managers, clock ?? BusinessClock.Local)
                 .Generate(properties.SelectMany(p => p.Units).ToList(), applicants);
 
             db.Properties.AddRange(properties);
@@ -145,7 +147,7 @@ namespace Troy_Web_Property_Manager.Data
         }
 
         /// <summary>Builds applications whose history, sections and leases all line up.</summary>
-        private sealed class ApplicationGenerator(Faker f, List<IdentityUser> managers, DateTime now)
+        private sealed class ApplicationGenerator(Faker f, List<IdentityUser> managers, BusinessClock clock)
         {
             // Every review goes through the queue: a manager claims it (Under Review) and then decides.
             private static readonly ApplicationStatus[][] ApprovedPaths =
@@ -186,6 +188,10 @@ namespace Troy_Web_Property_Manager.Data
                 "Negative landlord reference."
             ];
 
+            // "Now" on the business's wall clock. The timeline below is planned in local time so each lease starts on
+            // the business's date for its approval; ToUtc converts every timestamp as it's stored.
+            private readonly DateTime _now = clock.ToBusinessTime(clock.UtcNow).DateTime;
+
             private readonly Dictionary<Unit, List<(DateTime Start, DateTime End)>> _leases = [];
             private readonly Dictionary<Unit, List<DateTime>> _submits = [];
             private readonly HashSet<(Applicant, Unit)> _open = [];
@@ -213,12 +219,12 @@ namespace Troy_Web_Property_Manager.Data
             private bool TryAdd(ApplicationStatus[] path, Unit unit, Applicant applicant, int maxDaysAgo)
             {
                 // Each step lands somewhere between a few hours and two weeks after the last, all in the past.
-                var times = new List<DateTime> { now.AddDays(-f.Random.Double(3, maxDaysAgo)) };
+                var times = new List<DateTime> { _now.AddDays(-f.Random.Double(3, maxDaysAgo)) };
                 for (var i = 1; i < path.Length; i++)
                 {
                     times.Add(times[^1].AddHours(f.Random.Int(4, 24 * 14)));
                 }
-                if (times[^1] > now) return false;
+                if (times[^1] > _now) return false;
 
                 var final = path[^1];
                 var isOpen = !ApplicationWorkflow.IsTerminal(final);
@@ -265,7 +271,7 @@ namespace Troy_Web_Property_Manager.Data
                 application.ApplicationApplicants.Add(new ApplicationApplicant
                 {
                     Applicant = other,
-                    Added = started.AddHours(1),
+                    Added = clock.ToUtc(started.AddHours(1)),
                     AddedByUser = starter.UserId!
                 });
                 if (isOpen) _open.Add((other, unit));
@@ -301,9 +307,9 @@ namespace Troy_Web_Property_Manager.Data
                     Unit = unit,
                     Applicant = applicant,
                     Status = (long)path[^1],
-                    Created = times[0],
+                    Created = clock.ToUtc(times[0]),
                     // Set on every submit, so it holds the latest one.
-                    Submitted = SubmitTimes(path, times).Select(t => (DateTime?)t).LastOrDefault(),
+                    Submitted = SubmitTimes(path, times).Select(t => (DateTime?)clock.ToUtc(t)).LastOrDefault(),
                     ApplicantInformationVersion = Guid.NewGuid(),
                     ResidenceHistoryVersion = Guid.NewGuid()
                 };
@@ -311,7 +317,7 @@ namespace Troy_Web_Property_Manager.Data
                 application.ApplicationApplicants.Add(new ApplicationApplicant
                 {
                     Applicant = applicant,
-                    Added = times[0],
+                    Added = clock.ToUtc(times[0]),
                     AddedByUser = applicant.UserId!
                 });
 
@@ -371,7 +377,7 @@ namespace Troy_Web_Property_Manager.Data
                         ChangedByUser = outcome is not null || to == ApplicationStatus.UnderReview
                             || (from == ApplicationStatus.UnderReview && to == ApplicationStatus.Submitted)
                             ? reviewer! : applicant.UserId!,
-                        ChangedDate = times[i]
+                        ChangedDate = clock.ToUtc(times[i])
                     });
                 }
 
@@ -379,7 +385,7 @@ namespace Troy_Web_Property_Manager.Data
                 if (path[^1] == ApplicationStatus.UnderReview)
                 {
                     application.ReviewerUser = reviewer;
-                    application.ReviewClaimed = times[^1];
+                    application.ReviewClaimed = clock.ToUtc(times[^1]);
                 }
                 return application;
             }

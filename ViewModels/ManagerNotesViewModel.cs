@@ -27,6 +27,6 @@ namespace Troy_Web_Property_Manager.ViewModels
         /// <summary>Email of the manager who saved last. Display only.</summary>
         [BindNever] public string? UpdatedBy { get; set; }
 
-        [BindNever] public DateTime? UpdatedAt { get; set; }
+        [BindNever] public DateTimeOffset? UpdatedAt { get; set; }
     }
 }
