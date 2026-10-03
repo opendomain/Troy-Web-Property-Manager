@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity.UI.Services;
+using Troy_Web_Property_Manager.Services;
 
 namespace Troy_Web_Property_Manager.UITests.Infrastructure
 {
@@ -19,7 +20,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
 
         public Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
-            if (_failFor.ContainsKey(email)) throw new InvalidOperationException($"Simulated send failure to {email}.");
+            if (_failFor.ContainsKey(email)) throw new EmailSendException($"Simulated send failure to {email}.");
             _sent.Enqueue(new SentEmail(email, subject, htmlMessage));
             return Task.CompletedTask;
         }

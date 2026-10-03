@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
+using Troy_Web_Property_Manager.Areas.Identity;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
@@ -51,7 +52,11 @@ namespace Troy_Web_Property_Manager
 
             // I started from the Razor Pages template to get the Identity pages and layout, but the app itself is MVC:
             // controllers, view models, Razor views, partials and view components (Technical 1.a).
-            builder.Services.AddRazorPages();
+            // The default Identity pages that send email (Forgot password, Resend confirmation, Manage email) don't catch
+            // a failed send; EmailFailureFilter shows a message instead of the error page.
+            builder.Services.AddRazorPages(options =>
+                options.Conventions.AddAreaFolderApplicationModelConvention("Identity", "/",
+                    model => model.Filters.Add(new EmailFailureFilter())));
 
             builder.Services.AddControllersWithViews(options =>
             {
