@@ -27,7 +27,7 @@ One row per application, created the first time a manager saves notes.
 | `RentalApplicationID` | `int`, primary key | Also the foreign key to `RentalApplications.id`. Sharing the key makes it one row per application. |
 | `Notes` | `nvarchar(2000)`, not null | The note text. Empty string when cleared. |
 | `UpdatedByUser` | `nvarchar(450)`, not null | Identity user id of the manager who saved last. Shown as their email, or "(deleted user)" if the account is gone. |
-| `UpdatedDate` | `datetime`, not null | When it was last saved, in server local time (same as the history table). |
+| `UpdatedDate` | `datetime`, not null | When it was last saved, in UTC (same as the history table). |
 | `Version` | `uniqueidentifier`, not null | Concurrency token. Set to a new Guid on every save. |
 
 - **Foreign key:** `FK_ManagerNote_RentalApplications`, cascade delete. Applications are never deleted by the app, so in practice this only matters for manual cleanup.

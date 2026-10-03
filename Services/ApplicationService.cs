@@ -43,7 +43,8 @@ namespace Troy_Web_Property_Manager.Services
     /// </remarks>
     public class ApplicationService(ApplicationDbContext db, BusinessClock? clock = null, ILogger<ApplicationService>? logger = null)
     {
-        // "Now" and "today" in the business's time zone (see BusinessClock). Tests that don't pass one get the server's.
+        // Timestamps are stored in UTC; "today" and the times on the page are in the business's time zone (see
+        // BusinessClock). Tests that don't pass one get the server's zone.
         private readonly BusinessClock _clock = clock ?? BusinessClock.Local;
 
         // Tests that don't pass a logger get one that discards everything.
@@ -228,7 +229,7 @@ namespace Troy_Web_Property_Manager.Services
                 UnitId = unitId,
                 Applicant = applicant,
                 Status = (long)ApplicationStatus.Draft,
-                Created = _clock.Now,
+                Created = _clock.UtcNow,
                 ApplicantInformationVersion = Guid.NewGuid(),
                 ResidenceHistoryVersion = Guid.NewGuid()
             };
@@ -394,7 +395,7 @@ namespace Troy_Web_Property_Manager.Services
                 IsManager = user.IsManager,
                 ReviewComment = string.IsNullOrWhiteSpace(reviewComment) ? null : reviewComment,
                 Reviewer = reviewer,
-                ReviewClaimed = user.IsManager ? application.ReviewClaimed : null,
+                ReviewClaimed = user.IsManager ? _clock.ToBusinessTime(application.ReviewClaimed) : null,
                 ClaimedByMe = user.IsManager && application.ReviewerUser == user.Id
             };
         }
@@ -557,7 +558,7 @@ namespace Troy_Web_Property_Manager.Services
                             return ServiceResult.Error(string.Join(" ", blockers));
                         }
                         ChangeStatus(application!, ApplicationStatus.Submitted, user);
-                        application!.Submitted = _clock.Now;
+                        application!.Submitted = _clock.UtcNow;
                         return null;
                     },
                     (ApplicationSection.ApplicantInformation, applicantInformationVersion),
@@ -645,7 +646,7 @@ namespace Troy_Web_Property_Manager.Services
             application!.ApplicationApplicants.Add(new ApplicationApplicant
             {
                 Applicant = await GetOrCreateProfileAsync(userId),
-                Added = _clock.Now,
+                Added = _clock.UtcNow,
                 AddedByUser = user.Id
             });
             // The application row doesn't change otherwise, so force the status check: no adding to one that was just
@@ -730,23 +731,32 @@ namespace Troy_Web_Property_Manager.Services
                 {
                     a.Status,
                     a.ReviewerUser,
-                    Item = new ReviewQueueItemViewModel
-                    {
-                        Id = a.Id,
-                        PropertyName = a.Unit.Property.Name,
-                        UnitNumber = a.Unit.UnitNumber,
-                        Applicant = a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email,
-                        SubmittedAt = a.Submitted,
-                        Reviewer = a.ReviewerUser == null ? null : u != null ? u.Email : "(deleted user)",
-                        ClaimedAt = a.ReviewClaimed
-                    }
+                    a.Id,
+                    PropertyName = a.Unit.Property.Name,
+                    a.Unit.UnitNumber,
+                    Applicant = a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email,
+                    a.Submitted,
+                    Reviewer = a.ReviewerUser == null ? null : u != null ? u.Email : "(deleted user)",
+                    a.ReviewClaimed
                 }).ToListAsync();
+
+            // The times are stored in UTC; the page shows them in the business's zone.
+            var items = rows.Select(r => (r.Status, r.ReviewerUser, Item: new ReviewQueueItemViewModel
+            {
+                Id = r.Id,
+                PropertyName = r.PropertyName,
+                UnitNumber = r.UnitNumber,
+                Applicant = r.Applicant,
+                SubmittedAt = _clock.ToBusinessTime(r.Submitted),
+                Reviewer = r.Reviewer,
+                ClaimedAt = _clock.ToBusinessTime(r.ReviewClaimed)
+            })).ToList();
 
             return new ReviewQueueViewModel
             {
-                Mine = rows.Where(r => r.ReviewerUser == user.Id).Select(r => r.Item).ToList(),
-                Waiting = rows.Where(r => r.Status == (long)ApplicationStatus.Submitted).Select(r => r.Item).ToList(),
-                ClaimedByOthers = rows.Where(r => r.Status == (long)ApplicationStatus.UnderReview && r.ReviewerUser != user.Id)
+                Mine = items.Where(r => r.ReviewerUser == user.Id).Select(r => r.Item).ToList(),
+                Waiting = items.Where(r => r.Status == (long)ApplicationStatus.Submitted).Select(r => r.Item).ToList(),
+                ClaimedByOthers = items.Where(r => r.Status == (long)ApplicationStatus.UnderReview && r.ReviewerUser != user.Id)
                     .Select(r => r.Item).ToList()
             };
         }
@@ -900,7 +910,7 @@ namespace Troy_Web_Property_Manager.Services
 
             return rows.Select(h => new HistoryItemViewModel
             {
-                ChangedAt = h.ChangedDate,
+                ChangedAt = _clock.ToBusinessTime(h.ChangedDate),
                 ChangedBy = h.ChangedBy ?? "(deleted user)",
                 FromStatus = h.PreviousStatus == 0 ? null : (ApplicationStatus)h.PreviousStatus,
                 ToStatus = (ApplicationStatus)h.NewStatus,
@@ -938,7 +948,7 @@ namespace Troy_Web_Property_Manager.Services
                 ApplicationId = id,
                 Notes = note?.Notes,
                 Version = note?.Version,
-                UpdatedAt = note?.UpdatedDate,
+                UpdatedAt = _clock.ToBusinessTime(note?.UpdatedDate),
                 UpdatedBy = note is null ? null : note.UpdatedBy ?? "(deleted user)"
             };
         }
@@ -977,7 +987,7 @@ namespace Troy_Web_Property_Manager.Services
 
             note.Notes = model.Notes?.Trim() ?? "";
             note.UpdatedByUser = user.Id;
-            note.UpdatedDate = _clock.Now;
+            note.UpdatedDate = _clock.UtcNow;
             note.Version = Guid.NewGuid();
 
             try
@@ -1025,19 +1035,30 @@ namespace Troy_Web_Property_Manager.Services
             var lastPage = Math.Max(1, (total + pageSize - 1) / pageSize);
             var page = Math.Clamp(query.Page, 1, lastPage);
 
-            var items = await Sorted(filtered, query.Sort, query.Dir == SortDirection.Desc)
+            var rows = await Sorted(filtered, query.Sort, query.Dir == SortDirection.Desc)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(a => new ApplicationListItemViewModel
+                .Select(a => new
                 {
-                    Id = a.Id,
+                    a.Id,
                     PropertyName = a.Unit.Property.Name,
-                    UnitNumber = a.Unit.UnitNumber,
+                    a.Unit.UnitNumber,
                     // The email on this application, or the one from their profile if they haven't saved the section yet.
                     Applicant = a.ApplicantInformation != null ? a.ApplicantInformation.Email : a.Applicant.Email,
-                    Status = (ApplicationStatus)a.Status,
-                    SubmittedAt = a.Submitted
+                    a.Status,
+                    a.Submitted
                 }).ToListAsync();
+
+            // Submitted is stored in UTC; the list gives it in the business's zone, with the offset.
+            var items = rows.Select(r => new ApplicationListItemViewModel
+            {
+                Id = r.Id,
+                PropertyName = r.PropertyName,
+                UnitNumber = r.UnitNumber,
+                Applicant = r.Applicant,
+                Status = (ApplicationStatus)r.Status,
+                SubmittedAt = _clock.ToBusinessTime(r.Submitted)
+            }).ToList();
 
             return new PagedResult<ApplicationListItemViewModel>(items, total, page, pageSize);
         }
@@ -1269,7 +1290,7 @@ namespace Troy_Web_Property_Manager.Services
             {
                 throw new InvalidOperationException($"An application can't move from {from} to {to}.");
             }
-            var now = _clock.Now;
+            var now = _clock.UtcNow;
             application.ApplicationStatusHistories.Add(new ApplicationStatusHistory
             {
                 PreviousStatus = application.Status,

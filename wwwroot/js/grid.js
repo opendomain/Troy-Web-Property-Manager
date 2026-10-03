@@ -27,8 +27,8 @@
         });
     }
 
-    // Server times are local to the business and sent without an offset, so take the date part as-is rather than
-    // letting Date shift it through a time zone.
+    // Server times come in the business's time zone with their offset (2026-10-03T14:05:00-04:00), so take the date
+    // part as-is - the business's date - rather than letting Date shift it into the viewer's zone.
     function formatDate(value) {
         const match = typeof value === 'string' && /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
         return match ? new Date(+match[1], +match[2] - 1, +match[3]).toLocaleDateString() : '';

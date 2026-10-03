@@ -8,7 +8,7 @@ namespace Troy_Web_Property_Manager.ViewModels
     /// </summary>
     public class HistoryItemViewModel
     {
-        public DateTime ChangedAt { get; set; }
+        public DateTimeOffset ChangedAt { get; set; }
         public string ChangedBy { get; set; } = "";
         /// <summary>Null on the first entry, when the application was started.</summary>
         public ApplicationStatus? FromStatus { get; set; }

@@ -910,3 +910,37 @@ other request was someone adding them to an application.
 
 - **M** `Services/ApplicationService.cs` - AddApplicantAsync becomes a retry loop around AddApplicantOnceAsync, like StartAsync. A deadlock or unique-key error is retried up to three times. The retry sees what the other request did, so someone added at the same moment now gets "They're already on this application" instead of a stale result. Only if every attempt loses is it stale. MaxStartAttempts is renamed MaxRaceAttempts since both use it. Start's retry log now says the request lost a race with another request.
 - **M** `Tests/.../Services/MultipleApplicantsTests.cs` - "A deadlocked add adds no one" becomes "a deadlocked add retries and adds them". New: a unique-key race retries and adds them; losing every attempt is stale and adds no one.
+
+### Step 72: Show a message when an Identity page can't send email
+
+**Assessment:** Functional 1.a (sign up and log in); Considerations (error handling).
+
+**Why:** Outside Development with no SendGrid key, or whenever SendGrid fails, EmailSender throws. Register catches
+that and shows the confirmation link, but Forgot password, Resend email confirmation and Manage → Email come from the
+default Identity UI and don't catch anything, so they ended on the 500 error page.
+
+**Files:**
+
+- **A** `Services/EmailSendException.cs` - Its own type for "the email didn't go", so it can be told apart from a bug. Still an InvalidOperationException.
+- **M** `Services/EmailSender.cs` - Throws EmailSendException for no key, no from address, a refusal, and (new) SendGrid being unreachable.
+- **A** `Areas/Identity/EmailFailureFilter.cs`, **M** `Program.cs` - A page filter on the whole Identity area: the form is redrawn with "We couldn't send the email right now" (the Manage pages redirect back with an error status message instead).
+- **M** `Tests/.../UITests/Infrastructure/CapturingEmailSender.cs` - Simulated failures throw EmailSendException.
+- **M** `Tests/.../UITests/Tests/AccountTests.cs` - Forgot password, Resend confirmation and Change email show the message when the send fails.
+
+### Step 73: Store timestamps in UTC
+
+**Assessment:** Functional 5.c (status history); Considerations (data integrity).
+
+**Why:** Timestamps were stored on the business's wall clock, and the hour the clocks go back each autumn happens
+twice, so a history row written in the second 1:30 AM sorted before one from the first. UTC never repeats. Lease dates
+stay calendar dates on the business's calendar.
+
+**Files:**
+
+- **M** `Services/BusinessClock.cs` - UtcNow (what gets stored), Today (the business's date, unchanged), ToBusinessTime (UTC to the business's zone, for display) and ToUtc (for the seeder). Now is gone, so local time can't be stored by mistake.
+- **M** `Services/ApplicationService.cs` - Stores UtcNow. The editor, queue, history, notes and list convert to the business's zone.
+- **M** `ViewModels/*` - Display times are DateTimeOffset in the business's zone, so the list API now sends the offset (2026-10-03T14:05:00-04:00).
+- **M** `Data/DemoDataSeeder.cs`, **M** `Program.cs` - The seeder takes the clock, plans its timeline in local time (so leases start on the business's date) and stores each timestamp in UTC.
+- **A** `Data/Migrations/..._UtcTimestamps.cs` - Converts existing rows from Eastern time to UTC (Down converts back). No schema change.
+- **M** `wwwroot/js/grid.js, Views/Shared/Components/ApplicationHistory/Default.cshtml, Docs/Bonus-*.md` - Comments and column descriptions.
+- **M** `Tests/.../BusinessClockTests.cs, ApplicationServiceTests.cs, DemoDataSeederTests.cs` - UTC storage, display offsets, the repeated autumn hour staying in order, the skipped spring hour.

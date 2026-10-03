@@ -43,7 +43,7 @@ The application page also has **Claim for review** (when Submitted), **Release**
 | Column | Type | Notes |
 |---|---|---|
 | `ReviewerUser` | `nvarchar(450)`, null | Identity user id of the manager who claimed it. Set only while Under Review. **EF concurrency token.** Shown as their email, or "(deleted user)" if the account is gone. |
-| `ReviewClaimed` | `datetime`, null | When it was claimed, in server local time (same as the other dates). Set and cleared together with `ReviewerUser`. |
+| `ReviewClaimed` | `datetime`, null | When it was claimed, in UTC (same as the other timestamps). Set and cleared together with `ReviewerUser`. |
 
 - **No foreign key to `AspNetUsers`**, the same as `ApplicationStatusHistory.ChangedByUser` and `ManagerNote.UpdatedByUser`. A `SET NULL` foreign key would break the check constraint below, and `NO ACTION` would block deleting a manager who holds a claim. Since any manager can release a claim, a deleted manager's claim can simply be released.
 - Both columns are only written by `ApplicationService.ChangeStatus`, which sets them when moving to Under Review and clears them on any move out of it (review, release, withdraw). No other code touches them, so they can't drift from the status.

@@ -192,6 +192,37 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.Equal("applicant-1@example.com", profile.Email);
         }
 
+        /// <summary>A TimeProvider stuck at one instant.</summary>
+        private sealed class FixedTime(DateTimeOffset utcNow) : TimeProvider
+        {
+            public override DateTimeOffset GetUtcNow()
+            {
+                return utcNow;
+            }
+        }
+
+        [Fact]
+        public async Task Timestamps_AreStoredInUtc_AndTheHistoryStaysInOrderWhenTheClocksGoBack()
+        {
+            // Nov 1 2026 in New York: a claim at 1:30 EDT, then a release at 1:15 EST - 45 minutes later, but earlier
+            // on the wall clock. Stored on the wall clock, the history would list the release first.
+            var newYork = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+            var claimedAt = new DateTimeOffset(2026, 11, 1, 5, 30, 0, TimeSpan.Zero);
+            var releasedAt = new DateTimeOffset(2026, 11, 1, 6, 15, 0, TimeSpan.Zero);
+            var id = await SubmittedAsync();
+
+            AssertOk(await new ApplicationService(_db.CreateContext(), new BusinessClock(newYork, new FixedTime(claimedAt)), _log)
+                .ClaimAsync(id, ManagerUser));
+            Assert.Equal(claimedAt.UtcDateTime, (await LoadAsync(id)).ReviewClaimed);
+            var service = new ApplicationService(_db.CreateContext(), new BusinessClock(newYork, new FixedTime(releasedAt)), _log);
+            AssertOk(await service.ReleaseAsync(id, ManagerUser));
+
+            var history = await service.GetHistoryAsync(id, ManagerUser);
+            Assert.Equal([ApplicationStatus.UnderReview, ApplicationStatus.Submitted], history.TakeLast(2).Select(h => h.ToStatus));
+            Assert.Equal(new DateTimeOffset(2026, 11, 1, 1, 30, 0, TimeSpan.FromHours(-4)), history[^2].ChangedAt);
+            Assert.Equal(new DateTimeOffset(2026, 11, 1, 1, 15, 0, TimeSpan.FromHours(-5)), history[^1].ChangedAt);
+        }
+
         [Fact]
         public async Task Start_AgainForSameUnit_ReopensOpenApplication()
         {

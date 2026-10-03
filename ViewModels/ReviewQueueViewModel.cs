@@ -23,11 +23,11 @@ namespace Troy_Web_Property_Manager.ViewModels
         public string PropertyName { get; set; } = "";
         public string UnitNumber { get; set; } = "";
         public string Applicant { get; set; } = "";
-        public DateTime? SubmittedAt { get; set; }
+        public DateTimeOffset? SubmittedAt { get; set; }
 
         /// <summary>Email of the manager who claimed it. Null while it's waiting.</summary>
         public string? Reviewer { get; set; }
 
-        public DateTime? ClaimedAt { get; set; }
+        public DateTimeOffset? ClaimedAt { get; set; }
     }
 }
