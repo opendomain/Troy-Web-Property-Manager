@@ -153,6 +153,15 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     }
 
     /// <summary>Every UI test class is in this collection, so they share one app and run one at a time.</summary>
+    /// <summary>
+    /// The app with the GoatCounter page counter switched on. The URL is a reserved .invalid name, and the tests only
+    /// read the HTML (no browser runs the script), so nothing is ever counted.
+    /// </summary>
+    public sealed class TelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: GoatCounterUrl))
+    {
+        public const string GoatCounterUrl = "https://uitest.invalid/count";
+    }
+
     [CollectionDefinition(Name)]
     public sealed class UiCollection : ICollectionFixture<UiFixture>
     {
@@ -171,5 +180,12 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     public sealed class ShowConfirmationLinkUiCollection : ICollectionFixture<ShowConfirmationLinkUiFixture>
     {
         public const string Name = "UI (show confirmation link)";
+    }
+
+    /// <summary>Tests that need the GoatCounter page counter on (<see cref="TelemetryUiFixture"/>).</summary>
+    [CollectionDefinition(Name)]
+    public sealed class TelemetryUiCollection : ICollectionFixture<TelemetryUiFixture>
+    {
+        public const string Name = "UI (telemetry on)";
     }
 }
