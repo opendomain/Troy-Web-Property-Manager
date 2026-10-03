@@ -55,6 +55,12 @@ public partial class RentalApplication
     /// </summary>
     public int ApplicantId { get; set; }
 
+    /// <summary>
+    /// Changes when an applicant is removed. EF checks it on every application update so an in-flight write
+    /// cannot commit using access that was revoked after the application was loaded.
+    /// </summary>
+    public Guid ApplicantAccessVersion { get; set; }
+
     /// <summary>Changes every time Applicant Information is saved. See the remarks.</summary>
     public Guid ApplicantInformationVersion { get; set; }
 

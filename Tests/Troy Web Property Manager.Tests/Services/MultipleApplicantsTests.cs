@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Troy_Web_Property_Manager.Models;
@@ -499,6 +500,96 @@ namespace Troy_Web_Property_Manager.Tests.Services
 
             var (currentInfo, currentHistory) = await VersionsAsync(id);
             AssertOk(await Service().SubmitAsync(id, currentInfo, currentHistory, ApplicantUser));
+        }
+
+        [Theory]
+        [InlineData("information")]
+        [InlineData("history")]
+        [InlineData("add-residence")]
+        [InlineData("edit-residence")]
+        [InlineData("delete-residence")]
+        [InlineData("submit")]
+        [InlineData("add-applicant")]
+        [InlineData("remove-applicant")]
+        [InlineData("withdraw")]
+        public async Task ApplicantRemovedAfterOwnershipCheck_InFlightWriteIsRejected(string operation)
+        {
+            var id = await SharedDraftAsync();
+            await CompleteAsync(id, ApplicantUser);
+            if (operation == "remove-applicant")
+            {
+                AssertOk(await Service().AddApplicantAsync(id,
+                    new AddApplicantViewModel { Email = Email(ThirdApplicantUser) }, ApplicantUser));
+            }
+            var editor = (await Service().GetEditorAsync(id, ApplicationSection.Summary, OtherApplicantUser))!;
+            var residence = Assert.Single(editor.Residences);
+            var before = await _db.CreateContext().RentalApplications.SingleAsync(a => a.Id == id);
+            var historyCount = await _db.CreateContext().ApplicationStatusHistories.CountAsync(h => h.RentalApplicationId == id);
+            var memberId = ApplicantIdOf(OtherApplicantUser);
+            var removed = false;
+            async Task RemoveAccess()
+            {
+                if (removed) return;
+                removed = true;
+                AssertOk(await Service().RemoveApplicantAsync(id, memberId, ApplicantUser));
+            }
+
+            // Section saves and additions start a transaction after loading the application. Withdrawal and
+            // membership removal go directly to SaveChanges. Remove access at that boundary, then resume the write.
+            var service = Service(new BeforeTransaction(RemoveAccess), new BeforeSave(RemoveAccess));
+            var result = operation switch
+            {
+                "information" => await service.SaveApplicantInformationAsync(id, Info("Revoked write"), editor.ApplicantInformationVersion, OtherApplicantUser),
+                "history" => await service.SaveResidenceHistoryAsync(id, editor.ResidenceHistoryVersion, OtherApplicantUser),
+                "add-residence" => await service.SaveResidenceAsync(id, Residence(editor.ResidenceHistoryVersion, "Revoked write"), OtherApplicantUser),
+                "edit-residence" => await service.SaveResidenceAsync(id, Residence(editor.ResidenceHistoryVersion, "Revoked write", residence.ResidenceId), OtherApplicantUser),
+                "delete-residence" => await service.DeleteResidenceAsync(id, residence.ResidenceId!.Value, editor.ResidenceHistoryVersion, OtherApplicantUser),
+                "submit" => await service.SubmitAsync(id, editor.ApplicantInformationVersion, editor.ResidenceHistoryVersion, OtherApplicantUser),
+                "add-applicant" => await service.AddApplicantAsync(id, new AddApplicantViewModel { Email = Email(ThirdApplicantUser) }, OtherApplicantUser),
+                "remove-applicant" => await service.RemoveApplicantAsync(id, ApplicantIdOf(ThirdApplicantUser), OtherApplicantUser),
+                "withdraw" => await service.WithdrawAsync(id, OtherApplicantUser),
+                _ => throw new InvalidOperationException(operation)
+            };
+
+            Assert.True(removed);
+            Assert.False(result.Succeeded);
+            Assert.True(result.Conflict);
+            var after = await _db.CreateContext().RentalApplications.SingleAsync(a => a.Id == id);
+            Assert.NotEqual(before.ApplicantAccessVersion, after.ApplicantAccessVersion);
+            Assert.Equal(before.Status, after.Status);
+            Assert.Equal(before.Submitted, after.Submitted);
+            Assert.Equal(before.ApplicantInformationVersion, after.ApplicantInformationVersion);
+            Assert.Equal(before.ResidenceHistoryVersion, after.ResidenceHistoryVersion);
+            Assert.Equal(historyCount, await _db.CreateContext().ApplicationStatusHistories.CountAsync(h => h.RentalApplicationId == id));
+            var current = (await Service().GetEditorAsync(id, null, ApplicantUser))!;
+            Assert.Equal(editor.ApplicantInformation.Name, current.ApplicantInformation.Name);
+            Assert.Equal(residence.Address, Assert.Single(current.Residences).Address);
+            Assert.DoesNotContain(current.Applicants, a => a.ApplicantId == memberId);
+            Assert.Equal(operation == "remove-applicant", current.Applicants.Any(a => a.Email == Email(ThirdApplicantUser)));
+            Assert.Null(await Service().GetEditorAsync(id, null, OtherApplicantUser));
+            // The remaining applicant can reload and keep editing.
+            AssertOk(await Service().SaveApplicantInformationAsync(id, Info("Still authorized"), current.ApplicantInformationVersion, ApplicantUser));
+        }
+
+        private sealed class BeforeTransaction(Func<Task> action) : DbTransactionInterceptor
+        {
+            public override async ValueTask<InterceptionResult<DbTransaction>> TransactionStartingAsync(
+                DbConnection connection, TransactionStartingEventData eventData,
+                InterceptionResult<DbTransaction> result, CancellationToken cancellationToken = default)
+            {
+                await action();
+                return result;
+            }
+        }
+
+        private sealed class BeforeSave(Func<Task> action) : SaveChangesInterceptor
+        {
+            public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+                DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+            {
+                await action();
+                return result;
+            }
         }
 
         /// <summary>Runs some SQL as if another request's save landed just before this one's.</summary>

@@ -231,6 +231,7 @@ namespace Troy_Web_Property_Manager.Data
                 // Same for the claim: if it was released and claimed by someone else in between, the status is Under
                 // Review both times, so the reviewer is what tells the two claims apart.
                 entity.Property(e => e.ReviewerUser).IsConcurrencyToken();
+                entity.Property(e => e.ApplicantAccessVersion).IsConcurrencyToken();
 
                 // At most one open (Draft, Submitted, Returned or Under Review) application per applicant and unit.
                 // It's a filtered unique index, so closed ones (Approved/Denied/Withdrawn) don't count and you can

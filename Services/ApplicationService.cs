@@ -686,6 +686,9 @@ namespace Troy_Web_Property_Manager.Services
             if (membership is null) return Logged(ServiceResult.Missing(), "Remove applicant", id, user);
 
             db.ApplicationApplicants.Remove(membership);
+            // Revocation and its version change commit together. All application writes check this token,
+            // including requests that already passed Visible before this membership was removed.
+            application.ApplicantAccessVersion = Guid.NewGuid();
             GuardStatus(application);
             var result = await SaveApplicationAsync();
             if (!result.Succeeded) return Logged(result, "Remove applicant", id, user);
@@ -1275,6 +1278,8 @@ namespace Troy_Web_Property_Manager.Services
         /// check. Marking Status as modified makes EF update the application row too - with the same value, but
         /// "WHERE Status = &lt;what we read&gt;" - so if it was submitted or withdrawn after we loaded it (say from
         /// another tab), the save fails instead of changing a locked application.
+        /// The same update checks ApplicantAccessVersion, rejecting writes whose applicant access was revoked
+        /// after the ownership check. Section version swaps and child changes roll back with that failed update.
         /// </summary>
         private void GuardStatus(RentalApplication application)
         {
