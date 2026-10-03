@@ -144,6 +144,14 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     {
     }
 
+    /// <summary>
+    /// The app with Registration:ShowConfirmationLink on, so the confirmation page shows the link even after the email
+    /// was sent. It needs its own app for the same reason as <see cref="NoSendGridKeyUiFixture"/>.
+    /// </summary>
+    public sealed class ShowConfirmationLinkUiFixture() : UiFixture(new AppFactory(showConfirmationLink: true))
+    {
+    }
+
     /// <summary>Every UI test class is in this collection, so they share one app and run one at a time.</summary>
     [CollectionDefinition(Name)]
     public sealed class UiCollection : ICollectionFixture<UiFixture>
@@ -156,5 +164,12 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     public sealed class NoSendGridKeyUiCollection : ICollectionFixture<NoSendGridKeyUiFixture>
     {
         public const string Name = "UI (no SendGrid key)";
+    }
+
+    /// <summary>Tests that need Registration:ShowConfirmationLink on (<see cref="ShowConfirmationLinkUiFixture"/>).</summary>
+    [CollectionDefinition(Name)]
+    public sealed class ShowConfirmationLinkUiCollection : ICollectionFixture<ShowConfirmationLinkUiFixture>
+    {
+        public const string Name = "UI (show confirmation link)";
     }
 }

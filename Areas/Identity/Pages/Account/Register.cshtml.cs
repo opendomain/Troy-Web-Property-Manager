@@ -26,19 +26,22 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
         private readonly ILogger<RegisterModel> _logger;
         private readonly IEmailSender _emailSender;
         private readonly SendGridOptions _sendGridOptions;
+        private readonly IConfiguration _configuration;
 
         public RegisterModel(
             UserManager<IdentityUser> userManager,
             SignInManager<IdentityUser> signInManager,
             ILogger<RegisterModel> logger,
             IEmailSender emailSender,
-            IOptions<SendGridOptions> sendGridOptions)
+            IOptions<SendGridOptions> sendGridOptions,
+            IConfiguration configuration)
         {
             _userManager = userManager;
             _signInManager = signInManager;
             _logger = logger;
             _emailSender = emailSender;
             _sendGridOptions = sendGridOptions.Value;
+            _configuration = configuration;
         }
 
         [BindProperty]
@@ -116,10 +119,10 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
                     // instead. TempData is encrypted, one-time and tied to this browser, so only the person who just
                     // registered sees it. No API key counts as a failure too - in Development EmailSender only logs the
                     // email then, so nothing would actually be sent.
+                    var emailSent = false;
                     if (string.IsNullOrWhiteSpace(_sendGridOptions.ApiKey))
                     {
                         _logger.LogWarning("SendGrid isn't configured; showing the confirmation link on the page instead.");
-                        TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
                     }
                     else
                     {
@@ -127,12 +130,25 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
                         {
                             await _emailSender.SendEmailAsync(Input.Email, "Confirm your email",
                                 $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.");
+                            emailSent = true;
                         }
                         catch (Exception ex)
                         {
                             _logger.LogError(ex, "Failed to send confirmation email; showing the confirmation link on the page instead.");
-                            TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
                         }
+                    }
+
+                    // SendGrid can accept an email that never arrives (a spam folder or a quarantine), and we can't
+                    // tell. With Registration:ShowConfirmationLink on, the page shows the link even after a successful
+                    // send, so nobody gets stuck. That skips real email verification, so turn it off in production.
+                    if (!emailSent)
+                    {
+                        TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
+                        TempData[RegisterConfirmationModel.EmailFailedKey] = true;
+                    }
+                    else if (_configuration.GetValue<bool>("Registration:ShowConfirmationLink"))
+                    {
+                        TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
                     }
 
                     // If account confirmation is required, redirect to register confirmation page

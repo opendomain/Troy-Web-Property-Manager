@@ -6,7 +6,7 @@
 
 <h1>@ViewData["Title"]</h1>
 
-@if (Model.ConfirmationLink is not null)
+@if (Model.ConfirmationLink is not null && Model.EmailFailed)
 {
     @* The email couldn't be sent, so Register passed the link along to show here instead. *@
     <div class="alert alert-warning" role="alert">
@@ -19,4 +19,13 @@
 else
 {
     <p>We sent a confirmation email to <strong>@Model.Email</strong>. Please check your inbox and click the link to confirm your account.</p>
+
+    @if (Model.ConfirmationLink is not null)
+    {
+        @* Registration:ShowConfirmationLink is on, in case the email lands in spam or never arrives. *@
+        <p>If the email doesn't arrive (check your spam folder too), you can confirm your account here:</p>
+        <p>
+            <a class="btn btn-primary" href="@Model.ConfirmationLink">Confirm your account</a>
+        </p>
+    }
 }
