@@ -153,7 +153,31 @@ namespace Troy_Web_Property_Manager
             // Ensure the database is created and apply any pending migrations
             await CreateDatabase(app);
 
+            serverSideTelemetry(app);
+
             await app.RunAsync();
+        }
+
+        private static void serverSideTelemetry(WebApplication app)
+        {
+            var pingUrl = app.Configuration["Telemetry:StartupPingUrl"];
+            if (string.IsNullOrWhiteSpace(pingUrl))
+            {
+                return;
+            }
+
+            app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                    await http.PostAsync(pingUrl, new StringContent($"env={app.Environment.EnvironmentName}"));
+                }
+                catch (Exception ex)
+                {
+                    app.Logger.LogDebug(ex, "Startup ping failed.");
+                }
+            }));
         }
 
         /// <summary>

@@ -42,6 +42,9 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
             builder.UseEnvironment("Development");
             builder.UseSetting("ConnectionStrings:DefaultConnection", ConnectionString);
             builder.UseSetting("SendGrid:ApiKey", SendGridApiKey);
+            // Test runs shouldn't count as someone running the app.
+            builder.UseSetting("Telemetry:StartupPingUrl", "");
+            builder.UseSetting("Telemetry:GoatCounterUrl", "");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IEmailSender>();

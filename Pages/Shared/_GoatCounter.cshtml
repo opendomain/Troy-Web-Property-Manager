@@ -1,0 +1,12 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@* GoatCounter page-view counter (no cookies). Renders nothing unless Telemetry:GoatCounterUrl is set, e.g.
+   https://YOURCODE.goatcounter.com/count. allow_local is needed because GoatCounter ignores localhost by default. *@
+@{
+    var goatCounterUrl = Configuration["Telemetry:GoatCounterUrl"];
+}
+@if (!string.IsNullOrWhiteSpace(goatCounterUrl))
+{
+    <script data-goatcounter="@goatCounterUrl"
+            data-goatcounter-settings='{"allow_local": true}'
+            async src="//gc.zgo.at/count.js"></script>
+}
