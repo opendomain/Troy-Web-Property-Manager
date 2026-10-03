@@ -46,7 +46,7 @@ Each section has its own version, stored on the application:
 
 ### The applicant profile
 
-Section 1 is shared by everyone on the application. For a new application it's pre-filled from the **starter's** profile. So saving a valid section 1 now updates the starter's profile only when the starter saves it. Another applicant's save doesn't rewrite anyone's profile. Before this change, the application's own applicant always updated their profile.
+Section 1 is shared by everyone on the application. For a new application it's pre-filled from the **starter's** profile - for the starter only. The profile holds the details they used on their other applications, so anyone else on the application sees section 1 empty until someone saves it there. Saving a valid section 1 now updates the starter's profile only when the starter saves it. Another applicant's save doesn't rewrite anyone's profile. Before this change, the application's own applicant always updated their profile.
 
 ## Data changes
 
@@ -135,6 +135,7 @@ A profile whose login was deleted has no `UserId`, so its `AddedByUser` is store
     - A removed applicant loses access, even from a page they still have open.
     - You can leave an application, but the starter can't be removed.
     - Only the starter's saves update the pre-fill profile.
+    - Only the starter sees section 1 pre-filled; the others see it empty until it's saved on the application.
   - **Two applicants saving:**
     - Different sections both save, one after the other and at the same instant (the second case fakes the other save landing mid-transaction).
     - For the same section, the second save is stale: Applicant Information, editing a residence, adding a residence, removing a residence, and Continue on Residence History.

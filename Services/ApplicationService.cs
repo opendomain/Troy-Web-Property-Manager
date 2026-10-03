@@ -322,10 +322,19 @@ namespace Troy_Web_Property_Manager.Services
                 current = ApplicationSection.Summary;
             }
 
-            // Use the application's own copy once it's saved; until then, pre-fill from the applicant's profile.
-            var info = application.ApplicantInformation is { } saved
-                ? (saved.Name, saved.Phone, saved.Email, saved.CurrentAddress)
-                : (application.Applicant.Name, application.Applicant.Phone, application.Applicant.Email, application.Applicant.CurrentAddress);
+            // Use the application's own copy once it's saved. Until then, the starter gets it pre-filled from their
+            // profile. Nobody else does: the profile holds the details the starter used on their other applications,
+            // which aren't shared with the people on this one until the starter (or someone) saves section 1 here.
+            (string? Name, string? Phone, string? Email, string? CurrentAddress) info = default;
+            if (application.ApplicantInformation is { } saved)
+            {
+                info = (saved.Name, saved.Phone, saved.Email, saved.CurrentAddress);
+            }
+            else if (application.Applicant.UserId == user.Id)
+            {
+                var profile = application.Applicant;
+                info = (profile.Name, profile.Phone, profile.Email, profile.CurrentAddress);
+            }
 
             // If it was returned or denied the applicant needs to know why. The full history is still managers only.
             string? reviewComment = null;
