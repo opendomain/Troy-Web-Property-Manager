@@ -77,6 +77,44 @@ namespace Troy_Web_Property_Manager.UITests.Tests
             Assert.Contains("My applications", new NavBar(browser).Links);
         }
 
+        [Theory]
+        [InlineData("/Identity/Account/ForgotPassword", "Reset Password")]
+        [InlineData("/Identity/Account/ResendEmailConfirmation", "Resend")]
+        public void EmailPages_WhenTheEmailCantBeSent_SayItFailed_InsteadOfTheErrorPage(string path, string button)
+        {
+            // These come from the default Identity UI and don't catch a failed send themselves (EmailFailureFilter does).
+            using var browser = app.NewBrowser();
+            var user = browser.RegisterAndConfirm(app, AppRoles.Applicant);
+            app.Emails.FailFor(user.Email);
+
+            browser.Go(path);
+            browser.Type(By.Id("Input_Email"), user.Email);
+            browser.ClickAndWaitForPage(By.XPath($"//main{Xp.Button(button)}"));
+
+            browser.WaitForText("We couldn't send the email right now. Please try again later.");
+            Assert.StartsWith(path, browser.PathAndQuery);
+            Assert.Equal(user.Email, browser.Value(By.Id("Input_Email")));
+        }
+
+        [Fact]
+        public void ChangeEmail_WhenTheEmailCantBeSent_ShowsAnErrorStatus_AndKeepsTheOldEmail()
+        {
+            using var browser = app.NewBrowser();
+            var user = browser.RegisterAndConfirm(app, AppRoles.Applicant);
+            browser.LogInAs(user);
+            var newEmail = $"changed-{Guid.NewGuid().ToString("N")[..10]}@uitest.local";
+            // The change-email link goes to the new address, so that's the send that fails.
+            app.Emails.FailFor(newEmail);
+
+            browser.Go("/Identity/Account/Manage/Email");
+            browser.Type(By.Id("Input_NewEmail"), newEmail);
+            browser.ClickAndWaitForPage(By.XPath($"//main{Xp.Button("Change email")}"));
+
+            browser.WaitForText("Error: We couldn't send the email right now. Please try again later.");
+            Assert.StartsWith("/Identity/Account/Manage/Email", browser.PathAndQuery);
+            Assert.Equal(user.Email, browser.Value(By.Id("Email")));
+        }
+
         [Fact]
         public void LogIn_BeforeConfirmingTheEmail_IsRefused()
         {

@@ -15,9 +15,10 @@ namespace Troy_Web_Property_Manager.Services
     /// <remarks>
     /// With no API key configured (e.g. a fresh clone), there's no client. SendGridClient throws on an empty key, and
     /// since this is created by DI that would take down every page that injects it (Register included). Instead, in
-    /// Development we log the email so you can still click the confirmation link; anywhere else we throw from
-    /// <see cref="SendEmailAsync"/>, and Register catches that and shows the confirmation link on the
-    /// RegisterConfirmation page instead.
+    /// Development we log the email so you can still click the confirmation link; anywhere else we throw an
+    /// <see cref="EmailSendException"/> from <see cref="SendEmailAsync"/> (as we do when SendGrid fails). Register
+    /// catches that and shows the confirmation link on the RegisterConfirmation page instead; the other Identity pages
+    /// that send email show a "couldn't send" message (see <c>EmailFailureFilter</c>).
     /// </remarks>
     public class EmailSender : IEmailSender
     {
@@ -45,14 +46,14 @@ namespace Troy_Web_Property_Manager.Services
                         email, subject, WebUtility.HtmlDecode(htmlMessage));
                     return;
                 }
-                throw new InvalidOperationException("SendGrid isn't configured (SendGrid:ApiKey is missing).");
+                throw new EmailSendException("SendGrid isn't configured (SendGrid:ApiKey is missing).");
             }
 
             // Validate configured from address so SendGrid doesn't throw with an unclear error.
             if (string.IsNullOrWhiteSpace(_options.FromEmail))
             {
                 _logger.LogError("SendGrid:FromEmail is not configured.");
-                throw new InvalidOperationException("SendGrid:FromEmail is not configured.");
+                throw new EmailSendException("SendGrid:FromEmail is not configured.");
             }
 
             // HTML only. Identity's messages are HTML, so sending them as plain text would show the raw tags.
@@ -67,7 +68,17 @@ namespace Troy_Web_Property_Manager.Services
             // Turn off click tracking - SendGrid rewrites the links and that can break the confirmation token.
             msg.SetClickTracking(false, false);
 
-            var response = await _client.SendEmailAsync(msg);
+            Response response;
+            try
+            {
+                response = await _client.SendEmailAsync(msg);
+            }
+            catch (Exception ex)
+            {
+                // SendGrid couldn't be reached (network, DNS, timeout) - the same "didn't go" as a refusal below.
+                _logger.LogError(ex, "SendGrid couldn't be reached to send to {Email}.", email);
+                throw new EmailSendException("Failed to send email.", ex);
+            }
             if (!response.IsSuccessStatusCode)
             {
                 string body = "";
@@ -77,7 +88,7 @@ namespace Troy_Web_Property_Manager.Services
                     body = await response.Body.ReadAsStringAsync();
                 }
                 _logger.LogError("SendGrid failed to send to {Email}: {Status} {Body}", email, response.StatusCode, body);
-                throw new InvalidOperationException("Failed to send email.");
+                throw new EmailSendException("Failed to send email.");
             }
             _logger.LogInformation("Sent \"{Subject}\" email to {Email}.", subject, email);
         }
