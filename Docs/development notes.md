@@ -944,3 +944,17 @@ stay calendar dates on the business's calendar.
 - **A** `Data/Migrations/..._UtcTimestamps.cs` - Converts existing rows from Eastern time to UTC (Down converts back). No schema change.
 - **M** `wwwroot/js/grid.js, Views/Shared/Components/ApplicationHistory/Default.cshtml, Docs/Bonus-*.md` - Comments and column descriptions.
 - **M** `Tests/.../BusinessClockTests.cs, ApplicationServiceTests.cs, DemoDataSeederTests.cs` - UTC storage, display offsets, the repeated autumn hour staying in order, the skipped spring hour.
+
+### Step 74: Keep the page counter off the Identity pages
+
+**Assessment:** Considerations (security, privacy).
+
+**Why:** GoatCounter's script sends each page's path with its query string. The Identity pages carry secrets there -
+the password reset token (ResetPassword?code=...), confirmation tokens and user ids (ConfirmEmail), and email
+addresses (RegisterConfirmation?email=...) - so the counter was sending them to a third party.
+
+**Files:**
+
+- **M** `Pages/Shared/_GoatCounter.cshtml` - Renders nothing on any page in the Identity area.
+- **M** `Tests/.../UITests/Infrastructure/AppFactory.cs, UiFixture.cs` - An app fixture with the counter switched on (a .invalid URL).
+- **A** `Tests/.../UITests/Tests/TelemetryTests.cs` - Home and Privacy have the counter; the Identity pages don't. Reads the HTML with HttpClient, so the script never runs.

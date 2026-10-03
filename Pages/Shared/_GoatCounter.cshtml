@@ -1,10 +1,15 @@
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @* GoatCounter page-view counter (no cookies). Renders nothing unless Telemetry:GoatCounterUrl is set, e.g.
-   https://YOURCODE.goatcounter.com/count. allow_local is needed because GoatCounter ignores localhost by default. *@
+   https://YOURCODE.goatcounter.com/count. allow_local is needed because GoatCounter ignores localhost by default.
+
+   Never on the Identity pages (log in, register, confirm email, reset password, manage account). The counter sends the
+   page's path with its query string, and those pages carry secrets there - reset and confirmation tokens, user ids,
+   email addresses - which mustn't go to a third party. The rest of the site's query strings are just ids and filters. *@
 @{
     var goatCounterUrl = Configuration["Telemetry:GoatCounterUrl"];
+    var isIdentityPage = string.Equals(ViewContext.RouteData.Values["area"] as string, "Identity", StringComparison.OrdinalIgnoreCase);
 }
-@if (!string.IsNullOrWhiteSpace(goatCounterUrl))
+@if (!string.IsNullOrWhiteSpace(goatCounterUrl) && !isIdentityPage)
 {
     <script data-goatcounter="@goatCounterUrl"
             data-goatcounter-settings='{"allow_local": true}'

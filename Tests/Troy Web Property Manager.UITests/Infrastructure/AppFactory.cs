@@ -27,14 +27,20 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     ///   <item>Registration:ShowConfirmationLink is set to <see cref="ShowConfirmationLink"/> - off by default, so
     ///   the confirmation page only shows the link when the email fails (see <see cref="ShowConfirmationLinkUiFixture"/>
     ///   for the app with it on).</item>
+    ///   <item>Telemetry: the startup ping is always off, and so is the GoatCounter page counter unless
+    ///   <see cref="GoatCounterUrl"/> is given (see <see cref="TelemetryUiFixture"/>). Test runs shouldn't count as
+    ///   someone using the app.</item>
     /// </list>
     /// </remarks>
-    public sealed class AppFactory(string sendGridApiKey = "uitest-not-a-real-key", bool showConfirmationLink = false)
+    public sealed class AppFactory(string sendGridApiKey = "uitest-not-a-real-key", bool showConfirmationLink = false,
+        string goatCounterUrl = "")
         : WebApplicationFactory<Program>
     {
         public string SendGridApiKey { get; } = sendGridApiKey;
 
         public bool ShowConfirmationLink { get; } = showConfirmationLink;
+
+        public string GoatCounterUrl { get; } = goatCounterUrl;
 
         public string DatabaseName { get; } = $"TroyWebPM_UITests_{Guid.NewGuid():N}";
 
@@ -51,7 +57,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
             builder.UseSetting("Registration:ShowConfirmationLink", ShowConfirmationLink.ToString());
             // Test runs shouldn't count as someone running the app.
             builder.UseSetting("Telemetry:StartupPingUrl", "");
-            builder.UseSetting("Telemetry:GoatCounterUrl", "");
+            builder.UseSetting("Telemetry:GoatCounterUrl", GoatCounterUrl);
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IEmailSender>();
