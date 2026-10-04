@@ -18,7 +18,7 @@ ConnectionStrings__DefaultConnection=<production-sql-server-connection-string>
 DOTNET_ENVIRONMENT=Production
 ASPNETCORE_ENVIRONMENT=Production
 
-Apply database migrations before starting Production. Production never exposes direct
+Apply database migrations before starting Production (see "Deploying migrations" in README.md). Production never exposes direct
 confirmation links, even if Registration:ShowConfirmationLink is enabled. Failed email
 delivery leaves the account unconfirmed and login blocked; users can resend confirmation.
 Development retains the on-page confirmation button for local testing.

@@ -15,6 +15,15 @@ namespace Troy_Web_Property_Manager.UITests.Tests
     [Collection(UiCollection.Name)]
     public sealed class SeedDataTests(UiFixture app)
     {
+        [Fact]
+        public async Task Startup_MigratesTheNewDatabase_AndLogsWhatItApplied()
+        {
+            var applied = await app.WithDbAsync(async db => (await db.Database.GetAppliedMigrationsAsync()).ToList());
+            Assert.Empty(await app.WithDbAsync(db => db.Database.GetPendingMigrationsAsync()));
+            Assert.Contains(app.Factory.Logs.Messages, m =>
+                m.StartsWith($"Applied {applied.Count} database migrations: ") && m.Contains(applied[^1]));
+        }
+
         [Theory]
         [InlineData("Submitted")]
         [InlineData("Under Review")]

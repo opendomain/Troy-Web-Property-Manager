@@ -11,7 +11,7 @@ An ASP.NET Core MVC app (.NET 10, EF Core 10, SQL Server) for renting out units.
 | Visual Studio 2026 *(optional)* | IDE | With the **ASP.NET and web development** workload. |
 | SQL Server Management Studio *(optional)* | Browse the database | |
 | Google Chrome *(optional)* | Only for the UI tests | Any recent version; the matching ChromeDriver is downloaded automatically. |
-| `dotnet-ef` *(optional)* | Only for adding migrations or dropping the database | `dotnet tool install --global dotnet-ef` |
+| `dotnet-ef` *(optional)* | Only for adding migrations, generating the Production migration script, or dropping the database | `dotnet tool install --global dotnet-ef` |
 
 NuGet packages are restored on the first build, so the first build needs internet access.
 
@@ -54,6 +54,19 @@ Shared settings in `appsettings.json` use safe defaults. `appsettings.Developmen
 
 The `http` and `https` launch profiles select Development. The `Production` profile selects Production; without a launch profile or an environment setting, ASP.NET Core defaults to Production. Set `DOTNET_ENVIRONMENT` and `ASPNETCORE_ENVIRONMENT` consistently when configuring a host.
 
+Every Development shortcut checks for Development itself, so any other environment (Staging, for example) gets Production's safeguards:
+
+| | Development | Any other environment |
+|---|---|---|
+| Connection string | LocalDB (`appsettings.Development.json`) | Required; startup stops with a clear error without one |
+| Migrations | Applied on startup | Must be deployed first; startup stops if any are pending |
+| Demo data | Seeded into an empty database | Never; roles and lookups only |
+| Sign-up roles | Applicant or Property Manager | Applicant only (managers come from `Bootstrap:ManagerEmail`) |
+| Confirmation link on the page | When the email fails, or with `Registration:ShowConfirmationLink` | Never |
+| No SendGrid key | Emails are written to the log | Sending fails; the account stays unconfirmed |
+| OpenAPI, migrations endpoint, database error page, "Development Mode" on `/Error` | On | Off |
+| Telemetry | Off unless set in user secrets | Production only, from `appsettings.Production.json` |
+
 ### Production setup
 
 Production requires an explicit SQL Server connection string and real email delivery. For example, in PowerShell:
@@ -69,7 +82,7 @@ dotnet ef database update --project "Troy Web Property Manager.csproj"
 dotnet run --launch-profile Production
 ```
 
-Use your hosting platform's secret configuration for deployment. Apply migrations as a deployment step before starting the app; startup refuses a database with pending migrations outside Development. Roles and lookup data are still initialized in every environment. Demo accounts and properties are never seeded outside Development. Public registration creates applicants only outside Development. To create a Property Manager, register and confirm the account as usual, then set `Bootstrap:ManagerEmail` to its address (e.g. `$env:Bootstrap__ManagerEmail = "manager@your-domain"`) and restart. On startup that confirmed account becomes a Property Manager (and stops being an Applicant). Unconfirmed accounts are never promoted. Once it's a manager, more managers can be added the same way, one restart each.
+That's fine for trying Production locally, with one gap: run from the build output (not a publish), the app doesn't serve static web assets outside Development, so the scoped CSS bundle and the Identity pages' validation scripts fail to load. A published app (`dotnet publish`) serves them normally. For a real deployment, use your hosting platform's secret configuration, and apply migrations as a deployment step before starting the app (see [Deploying migrations](#deploying-migrations)); startup refuses a database with pending migrations outside Development. Roles and lookup data are still initialized in every environment. Demo accounts and properties are never seeded outside Development. Public registration creates applicants only outside Development. To create a Property Manager, register and confirm the account as usual, then set `Bootstrap:ManagerEmail` to its address (e.g. `$env:Bootstrap__ManagerEmail = "manager@your-domain"`) and restart. On startup that confirmed account becomes a Property Manager (and stops being an Applicant). Unconfirmed accounts are never promoted. Once it's a manager, more managers can be added the same way, one restart each.
 
 ### Connection string
 
@@ -116,7 +129,7 @@ There are two test projects. `dotnet test` from the repo root runs both.
 dotnet test "Tests/Troy Web Property Manager.Tests"
 ```
 
-These tests (xUnit) run the services and rules against an in-memory SQLite database built from the real EF model. They don't need SQL Server or any configuration, and they take about 10 seconds.
+These tests (xUnit) run the services and rules against an in-memory SQLite database built from the real EF model. They also cover what changes between environments (the sign-up roles, the confirmation link, the email sender with no key), the `Bootstrap:ManagerEmail` promotion, and that the Identity setup (`AddAppIdentity`) still matches the migrations. They don't need SQL Server or any configuration, and they take about 10 seconds.
 
 ### UI tests
 
@@ -127,7 +140,7 @@ dotnet test "Tests/Troy Web Property Manager.UITests"
 These tests (xUnit + Selenium WebDriver, headless Chrome) drive the real app in a browser. They cover every requirement and bonus item in the assessment, for both roles, including security (wrong role, other people's applications, tampered posts, missing antiforgery tokens) and the error cases.
 
 - **Needs:** Google Chrome and SQL Server LocalDB. Selenium Manager downloads the matching ChromeDriver on first run, so the first run needs internet access.
-- **What it does:** it starts the app in-process (`WebApplicationFactory` over Kestrel on a free port) against new LocalDB databases. Development fixtures let Program.cs migrate and seed; Production fixtures deploy migrations before starting. The databases are dropped at the end. The tests check they're connected to the throwaway database before running, so your development database is never touched. Emails are captured in memory (registration tests follow the confirmation link), so nothing goes to SendGrid.
+- **What it does:** it starts the app in-process (`WebApplicationFactory` over Kestrel on a free port) against new LocalDB databases. Development fixtures let Program.cs migrate and seed; Production and Staging fixtures deploy the migrations first (with the same `AddAppIdentity` registration as the app) and then start it, as a real deployment would. `ProductionEnvironmentTests` and `StagingEnvironmentTests` check the safeguards in the table under [Configuration](#configuration). The databases are dropped at the end. The tests check they're connected to the throwaway database before running, so your development database is never touched. Emails are captured in memory (registration tests follow the confirmation link), so nothing goes to SendGrid.
 - **How long:** a few minutes. The tests share one running app and run one at a time, each in its own browser.
 - **When one fails:** the error says what it was waiting for and where the browser was. A screenshot and the page source are saved under the test output folder, in `UiTestArtifacts`.
 - **Run a subset:** use a filter, e.g. `--filter "FullyQualifiedName~SecurityTests"`.
@@ -136,7 +149,7 @@ The tests are built in layers, so a test reads like the steps a person would tak
 
 | Folder | What's in it |
 |---|---|
-| `Infrastructure` | `UiFixture` (the running app, test users, database access), `Browser` (waiting, modals, requests with the browser's cookies), the captured email sender |
+| `Infrastructure` | `UiFixture` (the running app, test users, database access) and one fixture per configuration (Production, Staging, no SendGrid key, telemetry on, …), `Browser` (waiting, modals, requests with the browser's cookies), the captured email sender and captured logs |
 | `Pages` | One page object per page: `LoginPage`, `PropertiesPage`, `UnitsPage`, `ApplicationListPage`, `ApplicationPage`, `QueuePage`, … |
 | `Workflows` | Reusable steps built from the pages: `LogInAs`, `RegisterAndConfirm`, `ApplyFor`, `CompleteSections`, `CreateSubmittedApplication`, `Claim`, `ReviewApplication`, `Approve` |
 | `Tests` | The tests, one class per area of the assessment |
@@ -162,13 +175,32 @@ Details are in `Docs/Bonus-ApplicationGrid.md`.
 
 ## Database migrations
 
-The schema is code-first (`Data/Migrations`). Development applies migrations automatically on startup; Production requires `dotnet ef database update` as a deployment step. To change the model, edit the entities or `ApplicationDbContext`, then add a migration:
+The schema is code-first (`Data/Migrations`). Development applies migrations automatically on startup; anywhere else they're a deployment step (see [Deploying migrations](#deploying-migrations)). To change the model, edit the entities or `ApplicationDbContext`, then add a migration:
 
 ```sh
 dotnet ef migrations add <MigrationName> --project "Troy Web Property Manager.csproj"
 ```
 
 The next Development run applies it. Deploy it explicitly before the next Production run.
+
+### Deploying migrations
+
+Outside Development the app never changes the schema itself: it refuses to start while migrations are pending, so apply them first, before the new version of the app starts.
+
+**Recommended: an idempotent SQL script.** Generate it where the source is (a build machine or CI), and run it with any SQL client. The server needs neither the .NET SDK nor the source, and a DBA can review exactly what will run:
+
+```sh
+dotnet ef migrations script --idempotent --project "Troy Web Property Manager.csproj" --output migrations.sql
+sqlcmd -S <server> -d <database> -b -I -i migrations.sql
+```
+
+`--idempotent` makes each migration check `__EFMigrationsHistory` first, so the same script is safe on a database at any earlier version, and running it twice does nothing. `-b` stops on the first error; `-I` turns on quoted identifiers, which some of the generated statements need. Ship the script as a build artifact next to the app, so they always match.
+
+**Simple: `dotnet ef database update`** from a machine with the SDK and the source, as in [Production setup](#production-setup). Set `ConnectionStrings__DefaultConnection` (or pass `--connection`) so it targets the production database rather than LocalDB.
+
+**Not currently usable: `dotnet ef migrations bundle`.** The bundle builds, but running it fails with `Could not load file or assembly 'Microsoft.AspNetCore.Identity.UI'` while it looks for the DbContext, even when self-contained.
+
+Take a backup first; some migrations convert existing data (see each migration's `Down` for what a rollback undoes).
 
 ## Project layout
 
@@ -177,12 +209,16 @@ The next Development run applies it. Deploy it explicitly before the next Produc
 | `Controllers` | MVC controllers (thin: bind, validate, call a service). `Controllers/Api` holds the JSON API. |
 | `Services` | Business operations and data access (`ApplicationService`, `PropertyService`), plus email and the business clock. |
 | `Rules` | Pure business rules (workflow, validation, leases), unit-tested without a database. |
-| `Models`, `Data` | EF Core entities, `ApplicationDbContext`, migrations and the demo data seeder. |
+| `Models`, `Data` | EF Core entities, `ApplicationDbContext`, migrations, the demo data seeder and `ManagerBootstrapper` (`Bootstrap:ManagerEmail`). |
+| `Areas/Identity` | The scaffolded Register and RegisterConfirmation pages, `AddAppIdentity` (the one Identity registration) and `EmailFailureFilter`. |
 | `ViewModels`, `Views`, `ViewComponents` | Razor views, partials (modals), view components and their models. |
 | `wwwroot/js` | `site.js` (modal forms) and `grid.js` (data grids). No SPA framework. |
-| `Docs` | Assessment, ER diagram, entity analysis, UI wireframes, and a write-up for each bonus feature (`Bonus-*.md`). |
+| `Docs` | Assessment, ER diagram, entity analysis, UI wireframes, a write-up for each bonus feature (`Bonus-*.md`), and `development notes.md`: every check-in, what changed and why. |
 
 ## Security notes
 
 - Development sign-up lets you pick your own role, including Property Manager, because the assessment asks for a role picker (1.a.i). Outside Development, both the form and server validation restrict public registration to Applicant; managers are promoted with `Bootstrap:ManagerEmail` (see Production setup).
 - The demo accounts share a known password, which is why they are only seeded in Development.
+- `Bootstrap:ManagerEmail` only promotes an account whose email is confirmed, so registering someone else's address first doesn't get you the role.
+- Outside Development the confirmation link is never put on the page, so every account's email is really verified.
+- The GoatCounter page counter is never on the Identity pages, whose query strings carry reset and confirmation tokens.

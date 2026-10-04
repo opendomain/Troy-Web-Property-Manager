@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Troy_Web_Property_Manager.Areas.Identity;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 
@@ -51,12 +52,11 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
             // Production startup requires a deployed schema; provision only this fixture's throwaway database.
             if (Factory.EnvironmentName != "Development")
             {
-                // Identity's store options affect its EF model, so use the same registrations as the app.
                 var services = new ServiceCollection();
                 services.AddLogging();
                 services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(Factory.ConnectionString));
-                services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
-                    .AddRoles<IdentityRole>().AddEntityFrameworkStores<ApplicationDbContext>();
+                // Identity's options shape its EF model, so register it exactly the way Program does.
+                services.AddAppIdentity();
                 await using var provider = services.BuildServiceProvider();
                 await using var scope = provider.CreateAsyncScope();
                 var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();

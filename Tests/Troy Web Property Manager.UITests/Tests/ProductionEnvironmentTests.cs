@@ -90,6 +90,13 @@ public sealed class ProductionEnvironmentTests(ProductionUiFixture app)
     }
 
     [Fact]
+    public void Startup_WithDeployedSchema_LeavesMigrationsAlone()
+    {
+        // The fixture deployed the migrations before starting the app, so startup only checked them.
+        Assert.DoesNotContain(app.Factory.Logs.Messages, m => m.Contains("database migrations"));
+    }
+
+    [Fact]
     public async Task Startup_WithUndeployedMigrations_RefusesToCreateProductionDatabase()
     {
         await using var factory = new AppFactory(environment: "Production");

@@ -1046,3 +1046,29 @@ against AppRoles.All.
 - **M** `Tests/.../UITests/Infrastructure/UiFixture.cs`, **A** `Tests/.../UITests/Tests/StagingEnvironmentTests.cs` - A Staging fixture with ShowConfirmationLink and the counter switched on: sign-up is Applicant only and preselected, no confirmation link, no demo data, no counter.
 - **M** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs` - No connection string stops startup with a clear error.
 
+### Step 79: Migration logging, shared Identity setup, deploying migrations
+
+**Assessment:** Technical 2.b.i (migrations on start), 3.a (code-first migrations); Considerations (production-ready code); Deliverables (README).
+
+**Why:** After Step 77 the "Applied N migrations" log line could only ever run in Development, but it sat outside the
+Development branch, which made the code read as if Production migrated too. The Production test fixture deployed the
+schema with its own copy of the Identity registration, which would quietly drift from Program's (Identity's options
+shape the EF model, and MigrateAsync refuses a model that doesn't match the migrations). And the docs said to run
+`dotnet ef database update` in Production, which needs the SDK and the source on the server.
+
+**Files:**
+
+- **M** `Program.cs` - Pending migrations: outside Development, stop with an error that lists them and points to the README; in Development, migrate and log. Nothing happens when nothing is pending.
+- **A** `Areas/Identity/IdentityServiceCollectionExtensions.cs`, **M** `Program.cs` - AddAppIdentity: the one Identity registration, used by Program and by the UI tests' Production fixture.
+- **M** `Tests/.../UITests/Infrastructure/UiFixture.cs` - Uses AddAppIdentity.
+- **A** `Tests/.../UITests/Infrastructure/CapturingLoggerProvider.cs`, **M** `AppFactory.cs` - Keeps everything the app logs, so tests can check what startup did.
+- **M** `Tests/.../UITests/Tests/SeedAndNavigationTests.cs` - Development migrates the new database and logs each migration it applied.
+- **M** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs` - With the schema deployed, Production startup logs no migrations.
+- **A** `Tests/.../Data/AppIdentityTests.cs` - The model AddAppIdentity builds matches Data/Migrations (a changed key length makes it fail), and it requires confirmed accounts and supports roles.
+- **M** `README.md` - Deploying migrations: an idempotent SQL script (`dotnet ef migrations script --idempotent`, run with sqlcmd) is the recommended way; it was checked by applying it twice to a new LocalDB database, leaving nothing pending. `dotnet ef database update` is fine from a machine with the source. `dotnet ef migrations bundle` doesn't work for this project yet: the bundle can't load Microsoft.AspNetCore.Identity.UI, even when self-contained.
+- **M** `Docs/Email Setup.txt` - Points to Deploying migrations.
+- **M** `README.md`, **M** `Docs/development notes.md` - Also: a table of what changes between Development and every other environment, the static web assets gap when running Production from the build output, which tests cover the environments, `Areas/Identity` in the project layout, more security notes, and Steps 76-79 here.
+
+**Known issue:** Outside Development, running from the build output rather than a publish (the Production launch
+profile, and the Production/Staging UI tests), static web assets aren't enabled, so the scoped CSS bundle and the
+Identity UI's validation scripts return 500. Published output isn't affected. The UI tests pass without them.

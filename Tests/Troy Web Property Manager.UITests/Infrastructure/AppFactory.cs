@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Troy_Web_Property_Manager.UITests.Infrastructure
 {
@@ -50,6 +51,9 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
 
         public CapturingEmailSender Emails { get; } = new();
 
+        /// <summary>Everything the app logs, startup included.</summary>
+        public CapturingLoggerProvider Logs { get; } = new();
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment(EnvironmentName);
@@ -59,6 +63,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
             // Test runs shouldn't count as someone running the app.
             builder.UseSetting("Telemetry:StartupPingUrl", "");
             builder.UseSetting("Telemetry:GoatCounterUrl", GoatCounterUrl);
+            builder.ConfigureLogging(logging => logging.AddProvider(Logs));
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IEmailSender>();

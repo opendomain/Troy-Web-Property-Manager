@@ -28,14 +28,9 @@ namespace Troy_Web_Property_Manager
             if (builder.Environment.IsDevelopment())
                 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-            // ASP.NET Identity handles users and roles (Technical 2.a). The default Identity UI gives us sign-up,
-            // log-in and log-out for free (1.a). I scaffolded Register into Areas/Identity so it can ask for a role (1.a.i).
-            // AddRoles is what makes [Authorize(Roles = ...)] and User.IsInRole(...) work. Users and roles live in
-            // the same database as everything else.
-            // RequireConfirmedAccount means new users have to click the email link (sent by EmailSender) before logging in.
-            builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
-                .AddRoles<IdentityRole>()
-                .AddEntityFrameworkStores<ApplicationDbContext>();
+            // ASP.NET Identity handles users and roles (Technical 2.a). I scaffolded Register into Areas/Identity so it can
+            // ask for a role (1.a.i). AddAppIdentity has the details; it is shared so test setup builds the same model.
+            builder.Services.AddAppIdentity();
 
             // The JSON API (/api/...) uses the same auth cookie as the pages. A browser page that isn't signed in should
             // go to the login page, but an API call should just get the status code, so it can't be mistaken for data.
@@ -215,12 +210,14 @@ namespace Troy_Web_Property_Manager
 
                 // Development manages its local schema. Production migrations are a deployment step.
                 var pending = (await dbContext.Database.GetPendingMigrationsAsync()).ToList();
-                if (app.Environment.IsDevelopment())
-                    await dbContext.Database.MigrateAsync();
-                else if (pending.Count > 0)
-                    throw new InvalidOperationException("The database has pending migrations. Apply them with dotnet ef database update before starting outside Development.");
                 if (pending.Count > 0)
                 {
+                    if (!app.Environment.IsDevelopment())
+                    {
+                        throw new InvalidOperationException($"The database has {pending.Count} pending migrations ({string.Join(", ", pending)}). " +
+                            "Apply them before starting outside Development - see Deploying migrations in README.md.");
+                    }
+                    await dbContext.Database.MigrateAsync();
                     app.Logger.LogInformation("Applied {Count} database migrations: {Migrations}.", pending.Count, string.Join(", ", pending));
                 }
 
