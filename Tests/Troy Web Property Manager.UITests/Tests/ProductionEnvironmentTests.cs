@@ -191,4 +191,19 @@ public sealed class DevelopmentTelemetryTests(DevelopmentTelemetryUiFixture app)
         Assert.DoesNotContain("gc.zgo.at/count.js", html);
         Assert.DoesNotContain("data-goatcounter", html);
     }
+
+    [Fact]
+    public async Task FailedStartupPing_IsOnlyLogged_AndTheAppKeepsRunning()
+    {
+        // The ping is fire-and-forget, so give it a moment to fail.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!app.Factory.Logs.Messages.Contains("Startup ping failed.") && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(100);
+        }
+
+        Assert.Contains("Startup ping failed.", app.Factory.Logs.Messages);
+        using var http = new HttpClient();
+        (await http.GetAsync(app.BaseUrl + "/")).EnsureSuccessStatusCode();
+    }
 }

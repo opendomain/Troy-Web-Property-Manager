@@ -163,6 +163,30 @@ using var manager = app.NewBrowserAs(await app.CreateManagerAsync());
 manager.Approve(id);                                      // claim, review, approve
 ```
 
+### Code coverage
+
+Coverage counts both test projects. The UI tests host the app in-process, so every request they make counts as well. [`coverage.runsettings`](coverage.runsettings) limits it to the app's own hand-written code. It leaves out the test assemblies, packages, EF migrations, Razor markup (`.cshtml`; the `.cshtml.cs` code-behind is still measured) and source-generated files. The settings, the script and the summary are in the **Code Coverage** solution folder.
+
+The latest report is checked in under [`Docs/Code Coverage`](Docs/Code%20Coverage): [`SummaryGithub.md`](Docs/Code%20Coverage/SummaryGithub.md) has the per-class summary, and `index.html` is the full report, line by line (open it in a browser). At the time of writing it shows **99.6% line coverage and 99.0% branch coverage** (3,136 of 3,146 lines, 988 of 997 branches). The few branches left are defensive checks that can't be reached, races between two requests, the demo seeder's fixed random seed, and null checks in the OpenAPI setup.
+
+**In Visual Studio** (any edition of Visual Studio 2026, or Visual Studio 2022 17.8 and later):
+
+1. **Test > Configure Run Settings > Select Solution Wide runsettings File** and pick `coverage.runsettings` in the repo root.
+2. **Test > Analyze Code Coverage for All Tests.** This runs the UI tests too, so it needs Chrome and LocalDB and takes about 15 minutes. To skip them, right-click the `Troy Web Property Manager.Tests` project in Test Explorer and choose **Analyze Code Coverage**.
+3. The **Code Coverage Results** window shows the numbers per assembly, class and method. Turn on **Show Code Coverage Coloring** to see covered and missed lines in the editor.
+
+While those settings are selected, ordinary test runs collect coverage too. To stop that, choose **Test > Configure Run Settings** and clear the selection.
+
+**From the command line**, [`coverage.ps1`](coverage.ps1) runs the tests with these settings and rebuilds the checked-in report. It gets [ReportGenerator](https://reportgenerator.io) from the local tool manifest (`dotnet-tools.json`), so nothing needs installing first.
+
+```powershell
+./coverage.ps1                   # all tests, about 15 minutes, then rebuilds Docs/Code Coverage
+./coverage.ps1 -UnitTestsOnly    # unit tests only, under a minute (the report then shows less coverage)
+./coverage.ps1 -Open             # open the HTML report when it's done
+```
+
+The raw Cobertura files are written to `TestResults/Coverage`, which git ignores. Without the script, you can run `dotnet test --settings coverage.runsettings --collect "Code Coverage;Format=cobertura"`. Rerun the script and commit `Docs/Code Coverage` when the tests change, so the checked-in report stays current.
+
 ## API and OpenAPI
 
 The application list's data grid loads its rows from a JSON endpoint:
@@ -213,7 +237,7 @@ Take a backup first; some migrations convert existing data (see each migration's
 | `Areas/Identity` | The scaffolded Register and RegisterConfirmation pages, `AddAppIdentity` (the one Identity registration) and `EmailFailureFilter`. |
 | `ViewModels`, `Views`, `ViewComponents` | Razor views, partials (modals), view components and their models. |
 | `wwwroot/js` | `site.js` (modal forms) and `grid.js` (data grids). No SPA framework. |
-| `Docs` | Assessment, ER diagram, entity analysis, UI wireframes, a write-up for each bonus feature (`Bonus-*.md`), and `development notes.md`: every check-in, what changed and why. |
+| `Docs` | Assessment, ER diagram, entity analysis, UI wireframes, a write-up for each bonus feature (`Bonus-*.md`), `development notes.md` (every check-in, what changed and why), and the latest coverage report in `Code Coverage`. |
 
 ## Security notes
 

@@ -23,6 +23,17 @@
     <PackageReference Include="SendGrid" Version="9.29.3" />
   </ItemGroup>
 
+  <!-- Lets the unit tests use test-only seams, such as EmailSender's HttpClient constructor. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Troy Web Property Manager.Tests" />
+  </ItemGroup>
+
+  <!-- The dotnet local tool manifest (ReportGenerator, for coverage) is repo tooling, not something to publish. -->
+  <ItemGroup>
+    <Content Remove="dotnet-tools.json" />
+    <None Include="dotnet-tools.json" />
+  </ItemGroup>
+
   <!-- The test project lives below this folder; keep its files out of the web project. -->
   <ItemGroup>
     <Compile Remove="Tests\**" />

@@ -319,5 +319,83 @@ namespace Troy_Web_Property_Manager.Tests.Services
 
             Assert.True(_log.Has(LogLevel.Warning, $"unit type {_db.InactiveUnitTypeId} is inactive or doesn't exist."));
         }
+
+        // ---------------- Missing rows and lost races ----------------
+        // SQLite never races the way SQL Server does, so the lost races fake the error SQL Server would raise.
+
+        private PropertyService FailingService(int sqlError)
+        {
+            return new(_db.CreateContext(new FakeSqlErrors.OnSave(sqlError)), logger: _log);
+        }
+
+        [Fact]
+        public async Task DeleteProperty_UnknownId_IsNotFound()
+        {
+            Assert.True((await Service().DeletePropertyAsync(9999)).NotFound);
+            Assert.True(_log.Has(LogLevel.Warning, "Property 9999 wasn't removed: it doesn't exist."));
+        }
+
+        [Fact]
+        public async Task DeleteProperty_SomeoneAppliesDuringTheDelete_IsRejectedAndKeepsIt()
+        {
+            // The FK stops the delete when an application arrives between the check and the save.
+            var result = await FailingService(FakeSqlErrors.ReferenceConflict).DeletePropertyAsync(_db.PropertyId);
+
+            Assert.False(result.Succeeded);
+            Assert.Contains("can't be removed", result.Errors[""]);
+            Assert.Single(await _db.CreateContext().Properties.ToListAsync());
+        }
+
+        [Fact]
+        public async Task SaveUnit_UnknownUnitType_IsRejected()
+        {
+            var result = await Service().SaveUnitAsync(NewUnit("301", unitTypeId: 9999));
+
+            Assert.Equal("Choose an active unit type.", result.Errors[nameof(UnitFormViewModel.UnitTypeId)]);
+        }
+
+        [Fact]
+        public async Task SaveUnit_UnknownUnit_IsNotFound()
+        {
+            var model = NewUnit("301");
+            model.Id = 9999;
+
+            Assert.True((await Service().SaveUnitAsync(model)).NotFound);
+        }
+
+        [Fact]
+        public async Task SaveUnit_LosingTheUniqueNumberRace_IsRejectedOnTheNumber()
+        {
+            // Someone else added the same number between the duplicate check and the save.
+            var result = await FailingService(FakeSqlErrors.UniqueViolation).SaveUnitAsync(NewUnit("301"));
+
+            Assert.Equal("This unit number already exists at the property.", result.Errors[nameof(UnitFormViewModel.UnitNumber)]);
+            Assert.DoesNotContain(await _db.CreateContext().Units.ToListAsync(), u => u.UnitNumber == "301");
+        }
+
+        [Fact]
+        public async Task SaveUnit_EditHittingAReferenceConflict_IsNotSwallowed()
+        {
+            // Only a new unit's insert can point at a vanished property; on an edit the error is unexpected, so it throws.
+            var model = (await Service().GetUnitFormAsync(_db.UnitId))!;
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => FailingService(FakeSqlErrors.ReferenceConflict).SaveUnitAsync(model));
+        }
+
+        [Fact]
+        public async Task DeleteUnit_UnknownId_IsNotFound()
+        {
+            Assert.True((await Service().DeleteUnitAsync(9999)).NotFound);
+            Assert.True(_log.Has(LogLevel.Warning, "Unit 9999 wasn't removed: it doesn't exist."));
+        }
+
+        [Fact]
+        public async Task DeleteUnit_SomeoneAppliesDuringTheDelete_IsRejectedAndKeepsIt()
+        {
+            var result = await FailingService(FakeSqlErrors.ReferenceConflict).DeleteUnitAsync(_db.SecondUnitId);
+
+            Assert.Equal("This unit has applications, so it can't be removed.", result.Errors[""]);
+            Assert.Contains(await _db.CreateContext().Units.ToListAsync(), u => u.Id == _db.SecondUnitId);
+        }
     }
 }

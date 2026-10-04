@@ -1587,5 +1587,250 @@ namespace Troy_Web_Property_Manager.Tests.Services
             Assert.True(_log.Has(LogLevel.Information, $"Save manager notes on application {id} by user {ManagerUser.Id} succeeded."));
             Assert.DoesNotContain(_log.Messages, m => m.Message.Contains(secret));
         }
+
+        // ---------------- Missing rows ----------------
+        // Every write on an application that doesn't exist (or that this user can't see) is a 404, never an exception.
+
+        [Fact]
+        public async Task Writes_OnAMissingApplication_AreNotFound()
+        {
+            var version = Guid.NewGuid();
+
+            Assert.True((await Service().SaveResidenceHistoryAsync(9999, version, ApplicantUser)).NotFound);
+            Assert.True((await Service().SaveResidenceAsync(9999, Residence(), ApplicantUser)).NotFound);
+            Assert.True((await Service().DeleteResidenceAsync(9999, 1, version, ApplicantUser)).NotFound);
+            Assert.True((await Service().RemoveApplicantAsync(9999, 1, ApplicantUser)).NotFound);
+            Assert.True((await Service().ReleaseAsync(9999, ManagerUser)).NotFound);
+            Assert.True((await Service().ReviewAsync(9999, Review(ReviewOutcome.Approve), ManagerUser)).NotFound);
+        }
+
+        [Fact]
+        public async Task GetResidence_OnSomeoneElsesApplication_IsNull()
+        {
+            var id = await CompleteDraftAsync();
+            var residence = (await LoadResidenceIdsAsync(id)).Single();
+
+            Assert.NotNull(await Service().GetResidenceAsync(id, residence, ApplicantUser));
+            Assert.Null(await Service().GetResidenceAsync(id, residence, OtherApplicantUser));
+            Assert.Null(await Service().GetResidenceAsync(9999, residence, ApplicantUser));
+        }
+
+        [Fact]
+        public async Task Review_WithNoOutcome_IsRejectedOnTheOutcome()
+        {
+            var id = await ClaimedAsync();
+
+            var result = await Service().ReviewAsync(id, new ReviewViewModel { Outcome = null }, ManagerUser);
+
+            Assert.Equal("Choose a valid outcome.", result.Errors[nameof(ReviewViewModel.Outcome)]);
+            Assert.Equal((long)ApplicationStatus.UnderReview, (await LoadAsync(id)).Status);
+        }
+
+        [Fact]
+        public async Task SaveResidence_WithAResidenceIdFromAnotherApplication_IsNotFound()
+        {
+            var other = await CompleteDraftAsync(OtherApplicantUser, _db.SecondUnitId);
+            var theirResidence = (await LoadResidenceIdsAsync(other)).Single();
+            var mine = await StartAsync();
+
+            var model = Residence();
+            model.ResidenceId = theirResidence;
+            var result = await SaveResidenceAsync(mine, model, ApplicantUser);
+
+            Assert.True(result.NotFound);
+            Assert.Equal("5 Elm St", (await _db.CreateContext().Residences.SingleAsync(r => r.Id == theirResidence)).Address);
+        }
+
+        [Fact]
+        public async Task DeleteResidence_UnknownResidence_IsNotFound()
+        {
+            var id = await StartAsync();
+
+            Assert.True((await DeleteResidenceAsync(id, 9999, ApplicantUser)).NotFound);
+        }
+
+        [Fact]
+        public async Task SaveResidence_TooLongForTheDatabase_IsNotSaved()
+        {
+            var id = await StartAsync();
+            var model = Residence();
+            model.Address = new string('a', 51);
+
+            var result = await SaveResidenceAsync(id, model, ApplicantUser);
+
+            Assert.False(result.Succeeded);
+            Assert.True(result.Errors.ContainsKey(nameof(ResidenceViewModel.Address)));
+            Assert.Empty(_db.CreateContext().Residences);
+        }
+
+        [Fact]
+        public async Task RemoveApplicant_NotOnTheApplication_IsNotFound()
+        {
+            var id = await StartAsync();
+
+            Assert.True((await Service().RemoveApplicantAsync(id, 9999, ApplicantUser)).NotFound);
+        }
+
+        [Fact]
+        public async Task AddApplicant_WithNoEmail_IsRejectedOnTheEmail()
+        {
+            var id = await StartAsync();
+
+            var result = await Service().AddApplicantAsync(id, new AddApplicantViewModel { Email = null }, ApplicantUser);
+
+            Assert.Equal("There's no applicant account with that email.", result.Errors[nameof(AddApplicantViewModel.Email)]);
+        }
+
+        [Fact]
+        public async Task Edits_ByAManager_AreRejected()
+        {
+            // A manager can see a submitted application, but never edit it - even with a hand-made post.
+            var id = await SubmittedAsync();
+
+            AssertError(await Service().SaveResidenceHistoryAsync(id, (await VersionsAsync(id)).History, ManagerUser), "can no longer be edited");
+        }
+
+        // ---------------- Lost races ----------------
+
+        [Fact]
+        public async Task Start_LosingEveryAttemptToAUniqueRace_AsksToTryAgain()
+        {
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock, FakeSqlErrors.Deadlock, FakeSqlErrors.UniqueViolation))
+                .StartAsync(_db.UnitId, ApplicantUser);
+
+            Assert.True(result.Conflict);
+            Assert.Empty(_db.CreateContext().RentalApplications);
+        }
+
+        [Fact]
+        public async Task AddApplicant_LosingEveryAttemptToAUniqueRace_IsStale()
+        {
+            var id = await StartAsync();
+
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock, FakeSqlErrors.Deadlock, FakeSqlErrors.UniqueViolation))
+                .AddApplicantAsync(id, new AddApplicantViewModel { Email = $"{OtherApplicantUser.Id}@example.com" }, ApplicantUser);
+
+            Assert.True(result.Conflict);
+            Assert.Single(_db.CreateContext().ApplicationApplicants.Where(m => m.RentalApplicationId == id));
+        }
+
+        [Fact]
+        public async Task Review_LosingADeadlock_IsStale_AndChangesNothing()
+        {
+            // Two reviews touching the same unit in serializable transactions: SQL Server rolls one back.
+            var id = await ClaimedAsync();
+
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.Deadlock))
+                .ReviewAsync(id, Review(ReviewOutcome.Approve), ManagerUser);
+
+            Assert.True(result.Conflict);
+            Assert.Contains("Another review of this unit", result.Errors[""]);
+            var application = await LoadAsync(id);
+            Assert.Equal((long)ApplicationStatus.UnderReview, application.Status);
+            Assert.Empty(application.Leases);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_TwoManagersAddingTheFirstNoteAtOnce_SecondIsStale()
+        {
+            // The primary key (one row per application) stops the second insert.
+            var id = await SubmittedAsync();
+
+            var result = await Service(new FakeSqlErrors.OnSave(FakeSqlErrors.UniqueViolation))
+                .SaveManagerNotesAsync(id, Notes("Mine."), ManagerUser);
+
+            Assert.True(result.Conflict);
+            Assert.Empty(_db.CreateContext().ManagerNotes);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_FormWithAVersionButNoNotesSaved_IsStale()
+        {
+            // The row is never deleted, so a version without one is a tampered or badly out-of-date form.
+            var id = await SubmittedAsync();
+
+            Assert.True((await Service().SaveManagerNotesAsync(id, Notes("Mine.", Guid.NewGuid()), ManagerUser)).Conflict);
+            Assert.Empty(_db.CreateContext().ManagerNotes);
+        }
+
+        [Fact]
+        public async Task ManagerNotes_SavedEmpty_AreStoredAsBlank()
+        {
+            var id = await SubmittedAsync();
+
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes(null), ManagerUser));
+
+            Assert.Equal("", (await _db.CreateContext().ManagerNotes.SingleAsync()).Notes);
+        }
+
+        // ---------------- Deleted and unusual accounts ----------------
+
+        private async Task DeleteUserAsync(CurrentUser user)
+        {
+            await _db.CreateContext().Users.Where(u => u.Id == user.Id).ExecuteDeleteAsync();
+        }
+
+        private async Task<CurrentUser> AddApplicantAccountAsync(string id, string? email)
+        {
+            var db = _db.CreateContext();
+            db.Users.Add(new Microsoft.AspNetCore.Identity.IdentityUser { Id = id, UserName = id, Email = email, NormalizedEmail = email?.ToUpperInvariant() });
+            await db.SaveChangesAsync();
+            return new CurrentUser(id, IsManager: false);
+        }
+
+        private Task<List<int>> LoadResidenceIdsAsync(int id)
+        {
+            return _db.CreateContext().Residences.Where(r => r.RentalApplicationId == id).Select(r => r.Id).ToListAsync();
+        }
+
+        [Fact]
+        public async Task HistoryAndNotes_ByADeletedManager_SayDeletedUser()
+        {
+            var id = await ClaimedAsync();
+            AssertOk(await Service().SaveManagerNotesAsync(id, Notes("Checked references."), ManagerUser));
+            AssertOk(await Service().ReleaseAsync(id, ManagerUser));
+
+            await DeleteUserAsync(ManagerUser);
+
+            var history = await Service().GetHistoryAsync(id, OtherManagerUser);
+            Assert.Equal("(deleted user)", history[^1].ChangedBy);
+            Assert.Equal("(deleted user)", (await Service().GetManagerNotesAsync(id, OtherManagerUser))!.UpdatedBy);
+        }
+
+        [Fact]
+        public async Task Start_AccountWithNoEmail_ShowsNoEmailOnTheApplicants()
+        {
+            var user = await AddApplicantAccountAsync("no-email", email: null);
+
+            var id = await StartAsync(user);
+
+            var editor = await Service().GetEditorAsync(id, null, user);
+            Assert.Equal("(no email)", Assert.Single(editor!.Applicants).Email);
+            Assert.Equal("", (await _db.CreateContext().Applicants.SingleAsync(a => a.UserId == user.Id)).Email);
+        }
+
+        [Fact]
+        public async Task Start_AccountWithAnEmailTooLongForTheProfile_LeavesTheProfileEmailBlank()
+        {
+            var email = new string('a', 45) + "@example.com";
+            var user = await AddApplicantAccountAsync("long-email", email);
+
+            var id = await StartAsync(user);
+
+            Assert.Equal("", (await _db.CreateContext().Applicants.SingleAsync(a => a.UserId == user.Id)).Email);
+            // The applicants panel still shows the account's own email.
+            Assert.Equal(email, Assert.Single((await Service().GetEditorAsync(id, null, user))!.Applicants).Email);
+        }
+
+        [Fact]
+        public async Task ChildRows_PointBackAtTheirApplication()
+        {
+            var id = await SubmittedAsync();
+
+            var application = await LoadAsync(id);
+            Assert.Equal(id, application.ApplicantInformation!.RentalApplicationId);
+            Assert.All(application.ApplicationStatusHistories, h => Assert.Equal(id, h.RentalApplicationId));
+            Assert.Equal(id, (await _db.CreateContext().ApplicationApplicants.SingleAsync()).RentalApplicationId);
+        }
     }
 }

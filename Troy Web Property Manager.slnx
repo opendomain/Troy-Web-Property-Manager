@@ -1,4 +1,10 @@
 <Solution>
+  <Folder Name="/Code Coverage/">
+    <File Path="coverage.ps1" />
+    <File Path="coverage.runsettings" />
+    <File Path="Docs/Code Coverage/SummaryGithub.md" />
+    <File Path="dotnet-tools.json" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Troy Web Property Manager.Tests/Troy Web Property Manager.Tests.csproj" />
     <Project Path="Tests/Troy Web Property Manager.UITests/Troy Web Property Manager.UITests.csproj" />

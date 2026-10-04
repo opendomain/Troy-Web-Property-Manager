@@ -98,6 +98,12 @@ namespace Troy_Web_Property_Manager.Tests.Rules
         }
 
         [Fact]
+        public void CanTransition_FromAnUnknownStatus_IsNeverAllowed()
+        {
+            Assert.All(Enum.GetValues<ApplicationStatus>(), to => Assert.False(ApplicationWorkflow.CanTransition((ApplicationStatus)99, to)));
+        }
+
+        [Fact]
         public void StatusFor_RejectsUnknownOutcome()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => ApplicationWorkflow.StatusFor((ReviewOutcome)99));

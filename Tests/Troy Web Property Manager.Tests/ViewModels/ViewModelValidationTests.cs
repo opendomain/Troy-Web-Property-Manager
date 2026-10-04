@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Troy_Web_Property_Manager.Models;
+using Troy_Web_Property_Manager.Rules;
 using Troy_Web_Property_Manager.ViewModels;
 
 namespace Troy_Web_Property_Manager.Tests.ViewModels
@@ -149,6 +150,33 @@ namespace Troy_Web_Property_Manager.Tests.ViewModels
         public void ManagerNotes_Over2000Characters_IsInvalid()
         {
             Assert.Equal(new[] { nameof(ManagerNotesViewModel.Notes) }, ErrorFields(new ManagerNotesViewModel { Notes = new string('x', 2001) }));
+        }
+
+        // ---------------- Editor ----------------
+
+        [Fact]
+        public void SectionHasErrors_IsPerSection_AndNeverForTheSummary()
+        {
+            var editor = new ApplicationEditorViewModel
+            {
+                ApplicantInformationErrors = [new("ApplicantInformation.Phone", "Bad phone.")],
+                Residences = [new ResidenceViewModel { Errors = [new("Address", "Required.")] }]
+            };
+
+            Assert.True(editor.SectionHasErrors(ApplicationSection.ApplicantInformation));
+            Assert.True(editor.SectionHasErrors(ApplicationSection.ResidenceHistory));
+            Assert.False(editor.SectionHasErrors(ApplicationSection.Summary));
+        }
+
+        // ---------------- Enum display names ----------------
+
+        [Fact]
+        public void DisplayName_UsesTheDisplayAttribute_OrFallsBackToTheName()
+        {
+            Assert.Equal("Under Review", ApplicationStatus.UnderReview.DisplayName());
+            Assert.Equal("Draft", ApplicationStatus.Draft.DisplayName());
+            // A value with no matching member (a bad number from the database) still shows something.
+            Assert.Equal("99", ((ApplicationStatus)99).DisplayName());
         }
     }
 }
