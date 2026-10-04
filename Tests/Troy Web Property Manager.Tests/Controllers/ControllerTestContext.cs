@@ -34,7 +34,7 @@ namespace Troy_Web_Property_Manager.Tests.Controllers
         }
 
         /// <summary>Builds "/Controller/Action" URLs; the tests only check that there is one.</summary>
-        private sealed class FakeUrlHelper(ActionContext context) : IUrlHelper
+        public sealed class FakeUrlHelper(ActionContext context) : IUrlHelper
         {
             public ActionContext ActionContext { get; } = context;
 
@@ -60,11 +60,12 @@ namespace Troy_Web_Property_Manager.Tests.Controllers
 
             public string? RouteUrl(UrlRouteContext routeContext)
             {
-                return routeContext.RouteName;
+                // Url.Page ends up here.
+                return routeContext.RouteName ?? "/page";
             }
         }
 
-        private sealed class NoTempDataProvider : ITempDataProvider
+        public sealed class NoTempDataProvider : ITempDataProvider
         {
             public IDictionary<string, object> LoadTempData(HttpContext context)
             {

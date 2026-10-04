@@ -28,6 +28,12 @@
     <InternalsVisibleTo Include="Troy Web Property Manager.Tests" />
   </ItemGroup>
 
+  <!-- The dotnet local tool manifest (ReportGenerator, for coverage) is repo tooling, not something to publish. -->
+  <ItemGroup>
+    <Content Remove="dotnet-tools.json" />
+    <None Include="dotnet-tools.json" />
+  </ItemGroup>
+
   <!-- The test project lives below this folder; keep its files out of the web project. -->
   <ItemGroup>
     <Compile Remove="Tests\**" />
