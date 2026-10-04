@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -141,6 +143,32 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
         {
             using var scope = Factory.Services.CreateScope();
             return await query(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>());
+        }
+
+        /// <summary>
+        /// Loads <paramref name="path"/> and requests every local stylesheet and script it references, including the
+        /// local fallbacks for scripts loaded from a CDN (written in with document.write if the CDN copy didn't load).
+        /// Returns the ones that don't answer 200 (with their status), so a test can assert the list is empty.
+        /// </summary>
+        public async Task<List<string>> BrokenAssetsAsync(string path)
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
+            var html = await http.GetStringAsync(path);
+            var tags = Regex.Matches(html, "<(?:link[^>]*\\shref|script[^>]*\\ssrc)=\"(/[^/\"][^\"]*)\"");
+            var fallbacks = Regex.Matches(html, "src=\\\\u0022(/[^/\\\\][^\\\\]*)\\\\u0022");
+            var assets = tags.Concat(fallbacks)
+                .Select(m => WebUtility.HtmlDecode(m.Groups[1].Value))
+                .Distinct()
+                .ToList();
+            if (assets.Count == 0) throw new InvalidOperationException($"{path} references no local stylesheets or scripts.");
+
+            var broken = new List<string>();
+            foreach (var asset in assets)
+            {
+                using var response = await http.GetAsync(asset);
+                if (response.StatusCode != HttpStatusCode.OK) broken.Add($"{asset} -> {(int)response.StatusCode}");
+            }
+            return broken;
         }
 
         private static void Check(IdentityResult result)

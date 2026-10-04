@@ -41,6 +41,20 @@ public sealed class StagingEnvironmentTests(StagingUiFixture app)
 
     [Theory]
     [InlineData("/")]
+    [InlineData("/Identity/Account/Register")]
+    [InlineData("/Identity/Account/Login")]
+    [InlineData("/Identity/Account/ForgotPassword")]
+    [InlineData("/Identity/Account/ResendEmailConfirmation")]
+    public async Task PageStylesAndScripts_AllLoad(string path)
+    {
+        // Includes the scoped CSS bundle and the Identity UI's validation scripts, which outside Development only
+        // load from the build output if the app enables static web assets.
+        var broken = await app.BrokenAssetsAsync(path);
+        Assert.True(broken.Count == 0, "Not loading: " + string.Join(", ", broken));
+    }
+
+    [Theory]
+    [InlineData("/")]
     [InlineData("/Privacy")]
     public async Task PageCounter_IsOff_EvenWhenConfigured(string path)
     {
