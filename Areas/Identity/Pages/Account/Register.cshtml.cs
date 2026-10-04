@@ -16,7 +16,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
 {
     /// <summary>
     /// Sign-up page scaffolded from the Identity UI, with a role picker added.
-    /// We don't trust the posted role - it has to be in <see cref="AppRoles.All"/>.
+    /// Validates the posted role against the roles allowed for this environment.
     /// </summary>
     [AllowAnonymous]
     public class RegisterModel : PageModel
@@ -27,6 +27,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
         private readonly IEmailSender _emailSender;
         private readonly SendGridOptions _sendGridOptions;
         private readonly IConfiguration _configuration;
+        private readonly IWebHostEnvironment _environment;
 
         public RegisterModel(
             UserManager<IdentityUser> userManager,
@@ -34,7 +35,8 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
             ILogger<RegisterModel> logger,
             IEmailSender emailSender,
             IOptions<SendGridOptions> sendGridOptions,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IWebHostEnvironment environment)
         {
             _userManager = userManager;
             _signInManager = signInManager;
@@ -42,7 +44,10 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
             _emailSender = emailSender;
             _sendGridOptions = sendGridOptions.Value;
             _configuration = configuration;
+            _environment = environment;
         }
+
+        public string[] RegistrationRoles => _environment.IsDevelopment() ? AppRoles.All : [AppRoles.Applicant];
 
         [BindProperty]
         public InputModel Input { get; set; } = default!;
@@ -76,6 +81,11 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
         public void OnGet(string? returnUrl = null)
         {
             ReturnUrl = returnUrl ?? Url.Content("~/");
+            // Outside Development Applicant is the only choice, so pick it rather than make people click it.
+            if (RegistrationRoles.Length == 1)
+            {
+                Input = new InputModel { Role = RegistrationRoles[0] };
+            }
         }
 
         public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
@@ -83,8 +93,8 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
             returnUrl ??= Url.Content("~/");
             ReturnUrl = returnUrl;
 
-            // Only accept one of our two roles, no matter what the form sent.
-            if (!AppRoles.All.Contains(Input.Role))
+            // Public manager registration is a Development-only convenience, including for forged posts.
+            if (!RegistrationRoles.Contains(Input.Role))
             {
                 ModelState.AddModelError(nameof(Input) + "." + nameof(Input.Role), "Please select a valid role.");
             }
@@ -115,14 +125,11 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
                         values: new { area = "Identity", userId = user.Id, code, returnUrl },
                         protocol: Request.Scheme)!;
 
-                    // If the email can't go out, keep the account and let RegisterConfirmation show the link on the page
-                    // instead. TempData is encrypted, one-time and tied to this browser, so only the person who just
-                    // registered sees it. No API key counts as a failure too - in Development EmailSender only logs the
-                    // email then, so nothing would actually be sent.
+                    // Delivery failures keep the account unconfirmed. Only Development may expose a direct link.
                     var emailSent = false;
                     if (string.IsNullOrWhiteSpace(_sendGridOptions.ApiKey))
                     {
-                        _logger.LogWarning("SendGrid isn't configured; showing the confirmation link on the page instead.");
+                        _logger.LogWarning("SendGrid isn't configured; the confirmation email was not sent.");
                     }
                     else
                     {
@@ -134,19 +141,17 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, "Failed to send confirmation email; showing the confirmation link on the page instead.");
+                            _logger.LogError(ex, "Failed to send confirmation email; the account remains unconfirmed.");
                         }
                     }
 
-                    // SendGrid can accept an email that never arrives (a spam folder or a quarantine), and we can't
-                    // tell. With Registration:ShowConfirmationLink on, the page shows the link even after a successful
-                    // send, so nobody gets stuck. That skips real email verification, so turn it off in production.
+                    // The environment gate applies even if ShowConfirmationLink is accidentally enabled in Production.
                     if (!emailSent)
                     {
-                        TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
                         TempData[RegisterConfirmationModel.EmailFailedKey] = true;
                     }
-                    else if (_configuration.GetValue<bool>("Registration:ShowConfirmationLink"))
+                    if (_environment.IsDevelopment() &&
+                        (!emailSent || _configuration.GetValue<bool>("Registration:ShowConfirmationLink")))
                     {
                         TempData[RegisterConfirmationModel.ConfirmationLinkKey] = callbackUrl;
                     }

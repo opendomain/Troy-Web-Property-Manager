@@ -11,7 +11,8 @@ namespace Troy_Web_Property_Manager.Data
     /// <remarks>
     /// <para>It's code-first: this class and the entities in <c>Models</c> define the schema. Run
     /// <c>dotnet ef migrations add</c> to generate a migration into <c>Data/Migrations</c>, and
-    /// <c>Program.CreateDatabase</c> applies anything pending on startup (Technical 2.b.i). No hand-made tables.</para>
+    /// <c>Program.CreateDatabase</c> applies pending migrations on Development startup (Technical 2.b.i).
+    /// Other environments require deployment to apply migrations first. No hand-made tables.</para>
     /// <para>Inheriting from <see cref="IdentityDbContext"/> puts the AspNet* tables in the same database, so we can
     /// have real foreign keys to users (Applicant.UserId → AspNetUsers.Id) and one transaction can cover both. The demo
     /// seeder depends on that.</para>

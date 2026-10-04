@@ -36,7 +36,7 @@ One row per application, created the first time a manager saves notes.
 
 ### Migration
 
-`Data/Migrations/20260930182537_AddManagerNotes` creates the table. As with the other migrations, it's applied automatically on startup by `Program.CreateDatabase`. Existing data isn't touched.
+`Data/Migrations/20260930182537_AddManagerNotes` creates the table. As with the other migrations, it's applied automatically on Development startup (Production applies migrations during deployment) by `Program.CreateDatabase`. Existing data isn't touched.
 
 ## Code changes
 
@@ -44,7 +44,7 @@ One row per application, created the first time a manager saves notes.
 |---|---|---|
 | `Models/ManagerNote.cs` | **New.** The note entity. | Notes get their own entity and table so they can't come along with an application. |
 | `Data/ApplicationDbContext.cs` | Added the `ManagerNotes` DbSet and the `ManagerNote` mapping: table, column sizes, shared primary key, FK with no back-navigation, `Version` as a concurrency token. | Defines the schema code-first, like the rest of the model. |
-| `Data/Migrations/20260930182537_AddManagerNotes.cs` (+ `.Designer.cs`), `ApplicationDbContextModelSnapshot.cs` | **New** migration and updated snapshot. | Creates the table on startup. |
+| `Data/Migrations/20260930182537_AddManagerNotes.cs` (+ `.Designer.cs`), `ApplicationDbContextModelSnapshot.cs` | **New** migration and updated snapshot. | Creates the table on Development startup; deploy the migration explicitly in Production. |
 | `ViewModels/ManagerNotesViewModel.cs` | **New.** Notes text (max 2000), `Version` (hidden field), plus display-only "last updated by / at". `ApplicationId` and the display fields are `[BindNever]`. | Kept separate from `ApplicationEditorViewModel`, which is what applicants get. The version lets the service detect a stale form. |
 | `Services/ApplicationService.cs` | Added `GetManagerNotesAsync` and `SaveManagerNotesAsync`. | Keeps all the rules in the service, like the rest of the app: managers only, only applications the manager can see (`Visible`), editable in any status, concurrent saves return a "changed by someone else" result instead of overwriting. This is the only code that reads the table. |
 | `ViewComponents/ManagerNotesViewComponent.cs` | **New.** Renders the notes panel. Returns nothing unless the user is a Property Manager. | Loads its own data, so the notes never pass through the page's view model. Same approach as `ApplicationHistoryViewComponent`. |

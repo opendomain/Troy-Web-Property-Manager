@@ -972,3 +972,103 @@ an applicant added to a new draft could read them before the starter had shared 
 - **M** `Services/ApplicationService.cs` - GetEditorAsync pre-fills an unsaved section 1 only when the viewer is the starter; anyone else sees it empty. Once it's saved on the application, everyone sees the saved copy as before.
 - **M** `Tests/.../Services/MultipleApplicantsTests.cs` - The starter gets the pre-fill, an added applicant doesn't, and both see section 1 once it's saved.
 - **M** `Docs/Bonus-MultipleApplicants.md`
+
+### Step 76: Applicant remove race condition
+
+**Assessment:** Bonus 5 (multiple applicants); Considerations (security, concurrency).
+
+**Why:** Every application write checks that the user is on the application, then saves. If the starter removed an
+applicant between those two moments, the removed applicant's request had already passed the check and could still
+save section 1, residences, a submit or a withdraw on an application they no longer had access to.
+
+**Files:**
+
+- **M** `Models/RentalApplication.cs`, **M** `Data/ApplicationDbContext.cs` - ApplicantAccessVersion, a GUID used as a concurrency token on the application row.
+- **A** `Data/Migrations/20261003223033_ApplicantAccessConcurrency.cs (+ .Designer.cs)`, **M** `ApplicationDbContextModelSnapshot.cs` - Adds the column.
+- **M** `Services/ApplicationService.cs` - RemoveApplicantAsync sets a new ApplicantAccessVersion in the same save that removes the membership. GuardStatus already makes every write update the application row, so that update now also fails when access was revoked after the check. The write gets the usual "reload and try again" conflict, and its section version swaps and child changes roll back with it.
+- **M** `Tests/.../Services/MultipleApplicantsTests.cs` - For each write (section 1, history, add/edit/delete residence, submit, add/remove applicant, withdraw): an applicant removed after the ownership check gets a conflict, and nothing on the application changes except the access version.
+
+## Phase 12: Separate Development and Production
+
+Until now every environment behaved like a developer's machine: LocalDB was the default database, startup migrated
+whatever database it was pointed at, anyone could sign up as a Property Manager, and the registration page could show
+the confirmation link instead of making people use the email. This phase keeps all of that for Development (so a fresh
+clone still just works) and turns it off everywhere else. Each shortcut checks "is this Development?", never "is this
+Production?", so Staging or any other environment gets the safe behaviour.
+
+### Step 77: Separate Development and Production environments
+
+**Assessment:** Technical 2.a, 2.b; Considerations (production-ready code, security); Deliverables (README).
+
+**Why:** A deployed copy got Development's conveniences: a LocalDB connection string from appsettings.json, automatic
+migrations against the real database, Property Manager in the public role picker, an on-page confirmation link (even
+with `Registration:ShowConfirmationLink` left on by mistake), the OpenAPI document and the "Development Mode" text on
+the error page.
+
+**Files:**
+
+- **M** `appsettings.json` - Safe defaults only: no connection string, ShowConfirmationLink off, telemetry empty, DetailedErrors off.
+- **M** `appsettings.Development.json` - LocalDB, ShowConfirmationLink on.
+- **A** `appsettings.Production.json` - ShowConfirmationLink off; the startup ping and GoatCounter URLs.
+- **M** `Properties/launchSettings.json` - http/https set DOTNET_ENVIRONMENT as well; new Production profile.
+- **M** `Program.cs` - A missing connection string is a clear startup error. The database developer page, OpenAPI and automatic migrations are Development only; anywhere else startup refuses a database with pending migrations. The startup ping only runs in Development and Production.
+- **M** `Areas/Identity/Pages/Account/Register.cshtml, Register.cshtml.cs` - RegistrationRoles: both roles in Development, Applicant only elsewhere, for the radio buttons and for checking the post (so a tampered post can't pick Property Manager). The confirmation link only goes into TempData in Development.
+- **M** `Areas/Identity/Pages/Account/RegisterConfirmation.cshtml, .cshtml.cs` - Ignores any link outside Development. When the email couldn't be sent it says the account isn't confirmed and offers Resend confirmation email.
+- **M** `Pages/Error.cshtml` - The "Development Mode" instructions only show in Development.
+- **M** `Pages/Shared/_GoatCounter.cshtml` - Only in Development and Production; allow_local (count localhost) only in Development.
+- **M** `Services/EmailSender.cs, Data/ApplicationDbContext.cs, Docs/Bonus-*.md, Docs/Email Setup.txt, README.md` - Comments and docs: migrations are a deployment step outside Development, Production settings come from environment variables.
+- **M** `Tests/.../UITests/Infrastructure/AppFactory.cs, UiFixture.cs` - The app's environment is a parameter. Fixtures that aren't Development deploy the migrations before starting the app. New Production, Production-without-email and Development-telemetry fixtures; the telemetry fixture runs as Production.
+- **A** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs` - Registration needs the emailed link even with ShowConfirmationLink on (whether the send works or fails); Property Manager is rejected, tampered posts included; only roles and lookups are seeded; /openapi and /ApplyMigrations are 404; no developer text on /Error; undeployed migrations stop startup and create no database. No SendGrid key: no link and no login. Development telemetry: counter with allow_local, never on Identity pages.
+- **M** `Tests/.../UITests/Tests/TelemetryTests.cs` - No allow_local in Production.
+- **A** `Tests/.../Controllers/RegisterConfirmationTests.cs` - The link only shows in Development.
+- **A** `Tests/.../Services/EmailSenderTests.cs` - With no key, Development logs the email; anywhere else it throws and never logs the token.
+
+### Step 78: Environment review fixes
+
+**Assessment:** Functional 1.a.i (role on sign-up); Considerations (security, production-ready code).
+
+**Why:** A review of Step 77 found four gaps. Development still had the production health check and page counter
+URLs, so every local run pinged production's health check and counted as a production visit. With sign-up limited to
+Applicant there was no way at all to get a Property Manager in Production. The only role button wasn't selected, so
+applicants had to click their one choice or get "Please select a valid role". A comment still said the server checks
+against AppRoles.All.
+
+**Files:**
+
+- **M** `appsettings.Development.json` - Telemetry URLs emptied (set them in user secrets to try telemetry locally). Production keeps its values.
+- **A** `Data/ManagerBootstrapper.cs`, **M** `Program.cs`, **M** `appsettings.json` - Bootstrap:ManagerEmail. On startup, in any environment, that account becomes a Property Manager and stops being an Applicant, but only once its email is confirmed, so nobody can claim the role by registering the address first. It does nothing once the account is a manager.
+- **M** `Areas/Identity/Pages/Account/Register.cshtml.cs` - When Applicant is the only choice, the GET selects it.
+- **M** `Areas/Identity/Pages/Account/Register.cshtml` - The comment.
+- **M** `README.md` - Telemetry is Production-only by default; how to make the first Property Manager.
+- **A** `Tests/.../TestWebHostEnvironment.cs`, **M** `RegisterConfirmationTests.cs, EmailSenderTests.cs` - One shared fake environment instead of a copy per test class.
+- **A** `Tests/.../Controllers/RegisterTests.cs` - Roles per environment (Development, Production, Staging) and the preselection.
+- **A** `Tests/.../Data/ManagerBootstrapperTests.cs` - A confirmed applicant becomes manager only; an existing manager, an unconfirmed account, no setting and an unknown email change nothing.
+- **M** `Tests/.../UITests/Infrastructure/UiFixture.cs`, **A** `Tests/.../UITests/Tests/StagingEnvironmentTests.cs` - A Staging fixture with ShowConfirmationLink and the counter switched on: sign-up is Applicant only and preselected, no confirmation link, no demo data, no counter.
+- **M** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs` - No connection string stops startup with a clear error.
+
+### Step 79: Migration logging, shared Identity setup, deploying migrations
+
+**Assessment:** Technical 2.b.i (migrations on start), 3.a (code-first migrations); Considerations (production-ready code); Deliverables (README).
+
+**Why:** After Step 77 the "Applied N migrations" log line could only ever run in Development, but it sat outside the
+Development branch, which made the code read as if Production migrated too. The Production test fixture deployed the
+schema with its own copy of the Identity registration, which would quietly drift from Program's (Identity's options
+shape the EF model, and MigrateAsync refuses a model that doesn't match the migrations). And the docs said to run
+`dotnet ef database update` in Production, which needs the SDK and the source on the server.
+
+**Files:**
+
+- **M** `Program.cs` - Pending migrations: outside Development, stop with an error that lists them and points to the README; in Development, migrate and log. Nothing happens when nothing is pending.
+- **A** `Areas/Identity/IdentityServiceCollectionExtensions.cs`, **M** `Program.cs` - AddAppIdentity: the one Identity registration, used by Program and by the UI tests' Production fixture.
+- **M** `Tests/.../UITests/Infrastructure/UiFixture.cs` - Uses AddAppIdentity.
+- **A** `Tests/.../UITests/Infrastructure/CapturingLoggerProvider.cs`, **M** `AppFactory.cs` - Keeps everything the app logs, so tests can check what startup did.
+- **M** `Tests/.../UITests/Tests/SeedAndNavigationTests.cs` - Development migrates the new database and logs each migration it applied.
+- **M** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs` - With the schema deployed, Production startup logs no migrations.
+- **A** `Tests/.../Data/AppIdentityTests.cs` - The model AddAppIdentity builds matches Data/Migrations (a changed key length makes it fail), and it requires confirmed accounts and supports roles.
+- **M** `README.md` - Deploying migrations: an idempotent SQL script (`dotnet ef migrations script --idempotent`, run with sqlcmd) is the recommended way; it was checked by applying it twice to a new LocalDB database, leaving nothing pending. `dotnet ef database update` is fine from a machine with the source. `dotnet ef migrations bundle` doesn't work for this project yet: the bundle can't load Microsoft.AspNetCore.Identity.UI, even when self-contained.
+- **M** `Docs/Email Setup.txt` - Points to Deploying migrations.
+- **M** `README.md`, **M** `Docs/development notes.md` - Also: a table of what changes between Development and every other environment, the static web assets gap when running Production from the build output, which tests cover the environments, `Areas/Identity` in the project layout, more security notes, and Steps 76-79 here.
+
+**Known issue:** Outside Development, running from the build output rather than a publish (the Production launch
+profile, and the Production/Staging UI tests), static web assets aren't enabled, so the scoped CSS bundle and the
+Identity UI's validation scripts return 500. Published output isn't affected. The UI tests pass without them.

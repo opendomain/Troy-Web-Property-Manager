@@ -6,7 +6,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
 {
     /// <summary>
     /// "Check your email" page shown after sign-up. Replaces the default Identity UI page so that, when the
-    /// confirmation email couldn't be sent, the user gets the confirmation link right here instead.
+    /// confirmation email couldn't be sent, the user gets recovery guidance. Direct links are Development only.
     /// </summary>
     /// <remarks>
     /// The link only ever comes from TempData, set by Register in the same browser. We deliberately don't generate a
@@ -14,7 +14,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
     /// let anyone confirm any unconfirmed account just by knowing its email address.
     /// </remarks>
     [AllowAnonymous]
-    public class RegisterConfirmationModel : PageModel
+    public class RegisterConfirmationModel(IWebHostEnvironment environment) : PageModel
     {
         public const string ConfirmationLinkKey = "ConfirmationLink";
         public const string EmailFailedKey = "ConfirmationEmailFailed";
@@ -22,7 +22,7 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
         public string? Email { get; set; }
 
         /// <summary>
-        /// Set when the confirmation email failed to send, or when Registration:ShowConfirmationLink is on.
+        /// Development-only link when delivery failed or Registration:ShowConfirmationLink is on.
         /// </summary>
         public string? ConfirmationLink { get; set; }
 
@@ -37,7 +37,8 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
             }
 
             Email = email;
-            ConfirmationLink = TempData[ConfirmationLinkKey] as string;
+            var link = TempData[ConfirmationLinkKey] as string;
+            ConfirmationLink = environment.IsDevelopment() ? link : null;
             EmailFailed = TempData[EmailFailedKey] is true;
             return Page();
         }

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Troy_Web_Property_Manager.Areas.Identity;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 
@@ -48,6 +49,19 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
 
         public async Task InitializeAsync()
         {
+            // Production startup requires a deployed schema; provision only this fixture's throwaway database.
+            if (Factory.EnvironmentName != "Development")
+            {
+                var services = new ServiceCollection();
+                services.AddLogging();
+                services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(Factory.ConnectionString));
+                // Identity's options shape its EF model, so register it exactly the way Program does.
+                services.AddAppIdentity();
+                await using var provider = services.BuildServiceProvider();
+                await using var scope = provider.CreateAsyncScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                await db.Database.MigrateAsync();
+            }
             // Kestrel on a free port instead of the in-memory TestServer, so a real browser can connect.
             Factory.UseKestrel(0);
             Factory.StartServer();
@@ -157,9 +171,41 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     /// The app with the GoatCounter page counter switched on. The URL is a reserved .invalid name, and the tests only
     /// read the HTML (no browser runs the script), so nothing is ever counted.
     /// </summary>
-    public sealed class TelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: GoatCounterUrl))
+    public sealed class TelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: GoatCounterUrl, environment: "Production"))
     {
         public const string GoatCounterUrl = "https://uitest.invalid/count";
+    }
+
+    public sealed class ProductionUiFixture() : UiFixture(new AppFactory(showConfirmationLink: true, environment: "Production")) { }
+    public sealed class ProductionNoEmailUiFixture() : UiFixture(new AppFactory(sendGridApiKey: "", showConfirmationLink: true, environment: "Production")) { }
+    public sealed class DevelopmentTelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: TelemetryUiFixture.GoatCounterUrl)) { }
+
+    /// <summary>
+    /// Any environment that isn't Development should get Production's safeguards. Telemetry is on in config here, to
+    /// check it still stays off: it's only for Development and Production.
+    /// </summary>
+    public sealed class StagingUiFixture() : UiFixture(new AppFactory(showConfirmationLink: true,
+        goatCounterUrl: TelemetryUiFixture.GoatCounterUrl, environment: "Staging")) { }
+
+    [CollectionDefinition(Name)]
+    public sealed class StagingUiCollection : ICollectionFixture<StagingUiFixture>
+    {
+        public const string Name = "UI (Staging)";
+    }
+    [CollectionDefinition(Name)]
+    public sealed class ProductionUiCollection : ICollectionFixture<ProductionUiFixture>
+    {
+        public const string Name = "UI (Production)";
+    }
+    [CollectionDefinition(Name)]
+    public sealed class ProductionNoEmailUiCollection : ICollectionFixture<ProductionNoEmailUiFixture>
+    {
+        public const string Name = "UI (Production without email)";
+    }
+    [CollectionDefinition(Name)]
+    public sealed class DevelopmentTelemetryUiCollection : ICollectionFixture<DevelopmentTelemetryUiFixture>
+    {
+        public const string Name = "UI (Development telemetry on)";
     }
 
     [CollectionDefinition(Name)]

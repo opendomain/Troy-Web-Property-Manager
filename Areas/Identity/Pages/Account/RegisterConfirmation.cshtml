@@ -6,15 +6,21 @@
 
 <h1>@ViewData["Title"]</h1>
 
-@if (Model.ConfirmationLink is not null && Model.EmailFailed)
+@if (Model.EmailFailed)
 {
-    @* The email couldn't be sent, so Register passed the link along to show here instead. *@
+    @* Only Development may offer a direct confirmation link after delivery fails. *@
     <div class="alert alert-warning" role="alert">
         We couldn't send a confirmation email to <strong>@Model.Email</strong>.
     </div>
-    <p>
-        <a class="btn btn-primary" href="@Model.ConfirmationLink">Confirm your account</a>
-    </p>
+    @if (Model.ConfirmationLink is not null)
+    {
+        <p><a class="btn btn-primary" href="@Model.ConfirmationLink">Confirm your account</a></p>
+    }
+    else
+    {
+        <p>Your account is not confirmed yet. Please try resending the confirmation email later.</p>
+        <a asp-page="./ResendEmailConfirmation" class="btn btn-primary">Resend confirmation email</a>
+    }
 }
 else
 {

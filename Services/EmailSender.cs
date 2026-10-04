@@ -17,7 +17,7 @@ namespace Troy_Web_Property_Manager.Services
     /// since this is created by DI that would take down every page that injects it (Register included). Instead, in
     /// Development we log the email so you can still click the confirmation link; anywhere else we throw an
     /// <see cref="EmailSendException"/> from <see cref="SendEmailAsync"/> (as we do when SendGrid fails). Register
-    /// catches that and shows the confirmation link on the RegisterConfirmation page instead; the other Identity pages
+    /// catches that and offers a direct confirmation link only in Development; the other Identity pages
     /// that send email show a "couldn't send" message (see <c>EmailFailureFilter</c>).
     /// </remarks>
     public class EmailSender : IEmailSender
