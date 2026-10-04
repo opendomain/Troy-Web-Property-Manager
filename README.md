@@ -50,7 +50,7 @@ dotnet ef database drop --project "Troy Web Property Manager.csproj"
 
 ## Configuration
 
-Shared settings in `appsettings.json` use safe defaults. `appsettings.Development.json` enables LocalDB, detailed diagnostics and on-page confirmation links; `appsettings.Production.json` keeps those shortcuts off. Both environments configure the startup ping and GoatCounter telemetry. Development enables GoatCounter's localhost support. Identity pages exclude the page counter in both environments. Set a telemetry URL to an empty string to disable that integration. Keep secrets out of these files: use [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) in Development (the project already has a `UserSecretsId`) and environment variables in Production.
+Shared settings in `appsettings.json` use safe defaults. `appsettings.Development.json` enables LocalDB, detailed diagnostics and on-page confirmation links; `appsettings.Production.json` keeps those shortcuts off. Telemetry (the startup ping and the GoatCounter page counter) is configured only in `appsettings.Production.json`, so local runs never ping the production health check or count as production page views. To try it in Development, set `Telemetry:StartupPingUrl` or `Telemetry:GoatCounterUrl` in user secrets (preferably to a separate dev check or site); Development then turns on GoatCounter's localhost support. Identity pages never get the page counter. Set a telemetry URL to an empty string to disable that integration. Keep secrets out of these files: use [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) in Development (the project already has a `UserSecretsId`) and environment variables in Production.
 
 The `http` and `https` launch profiles select Development. The `Production` profile selects Production; without a launch profile or an environment setting, ASP.NET Core defaults to Production. Set `DOTNET_ENVIRONMENT` and `ASPNETCORE_ENVIRONMENT` consistently when configuring a host.
 
@@ -69,7 +69,7 @@ dotnet ef database update --project "Troy Web Property Manager.csproj"
 dotnet run --launch-profile Production
 ```
 
-Use your hosting platform's secret configuration for deployment. Apply migrations as a deployment step before starting the app; startup refuses a database with pending migrations outside Development. Roles and lookup data are still initialized in every environment. Demo accounts and properties are never seeded outside Development. Public registration creates applicants only outside Development; provision managers through a trusted administrative process using Identity's Property Manager role.
+Use your hosting platform's secret configuration for deployment. Apply migrations as a deployment step before starting the app; startup refuses a database with pending migrations outside Development. Roles and lookup data are still initialized in every environment. Demo accounts and properties are never seeded outside Development. Public registration creates applicants only outside Development. To create a Property Manager, register and confirm the account as usual, then set `Bootstrap:ManagerEmail` to its address (e.g. `$env:Bootstrap__ManagerEmail = "manager@your-domain"`) and restart. On startup that confirmed account becomes a Property Manager (and stops being an Applicant). Unconfirmed accounts are never promoted. Once it's a manager, more managers can be added the same way, one restart each.
 
 ### Connection string
 
@@ -184,5 +184,5 @@ The next Development run applies it. Deploy it explicitly before the next Produc
 
 ## Security notes
 
-- Development sign-up lets you pick your own role, including Property Manager, because the assessment asks for a role picker (1.a.i). Outside Development, both the form and server validation restrict public registration to Applicant.
+- Development sign-up lets you pick your own role, including Property Manager, because the assessment asks for a role picker (1.a.i). Outside Development, both the form and server validation restrict public registration to Applicant; managers are promoted with `Bootstrap:ManagerEmail` (see Production setup).
 - The demo accounts share a known password, which is why they are only seeded in Development.

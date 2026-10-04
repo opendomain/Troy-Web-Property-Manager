@@ -180,6 +180,18 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     public sealed class ProductionNoEmailUiFixture() : UiFixture(new AppFactory(sendGridApiKey: "", showConfirmationLink: true, environment: "Production")) { }
     public sealed class DevelopmentTelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: TelemetryUiFixture.GoatCounterUrl)) { }
 
+    /// <summary>
+    /// Any environment that isn't Development should get Production's safeguards. Telemetry is on in config here, to
+    /// check it still stays off: it's only for Development and Production.
+    /// </summary>
+    public sealed class StagingUiFixture() : UiFixture(new AppFactory(showConfirmationLink: true,
+        goatCounterUrl: TelemetryUiFixture.GoatCounterUrl, environment: "Staging")) { }
+
+    [CollectionDefinition(Name)]
+    public sealed class StagingUiCollection : ICollectionFixture<StagingUiFixture>
+    {
+        public const string Name = "UI (Staging)";
+    }
     [CollectionDefinition(Name)]
     public sealed class ProductionUiCollection : ICollectionFixture<ProductionUiFixture>
     {

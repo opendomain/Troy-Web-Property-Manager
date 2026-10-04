@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using OpenQA.Selenium;
 using Troy_Web_Property_Manager.Data;
@@ -105,6 +106,17 @@ public sealed class ProductionEnvironmentTests(ProductionUiFixture app)
         {
             await db.Database.EnsureDeletedAsync();
         }
+    }
+
+    [Fact]
+    public async Task Startup_WithoutConnectionString_FailsWithAClearError()
+    {
+        // Production has no LocalDB fallback, so a missing setting has to stop the app rather than pick a database.
+        await using var factory = new AppFactory(environment: "Production")
+            .WithWebHostBuilder(builder => builder.UseSetting("ConnectionStrings:DefaultConnection", ""));
+
+        var error = Assert.Throws<InvalidOperationException>(() => factory.Server);
+        Assert.Contains("ConnectionStrings:DefaultConnection", error.Message);
     }
 }
 

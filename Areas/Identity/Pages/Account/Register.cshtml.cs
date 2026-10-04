@@ -81,6 +81,11 @@ namespace Troy_Web_Property_Manager.Areas.Identity.Pages.Account
         public void OnGet(string? returnUrl = null)
         {
             ReturnUrl = returnUrl ?? Url.Content("~/");
+            // Outside Development Applicant is the only choice, so pick it rather than make people click it.
+            if (RegistrationRoles.Length == 1)
+            {
+                Input = new InputModel { Role = RegistrationRoles[0] };
+            }
         }
 
         public async Task<IActionResult> OnPostAsync(string? returnUrl = null)

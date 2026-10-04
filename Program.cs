@@ -242,6 +242,9 @@ namespace Troy_Web_Property_Manager
 
             await SeedRolesAsync(scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>(), logger);
             await SeedLookupsAsync(scope.ServiceProvider.GetRequiredService<ApplicationDbContext>(), logger);
+            // Outside Development this is how the first Property Manager gets made (sign-up only creates applicants).
+            await ManagerBootstrapper.PromoteAsync(scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(),
+                scope.ServiceProvider.GetRequiredService<IConfiguration>()["Bootstrap:ManagerEmail"], logger);
         }
 
         /// <summary>

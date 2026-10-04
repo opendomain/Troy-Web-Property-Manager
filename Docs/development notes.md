@@ -1023,3 +1023,26 @@ the error page.
 - **A** `Tests/.../Controllers/RegisterConfirmationTests.cs` - The link only shows in Development.
 - **A** `Tests/.../Services/EmailSenderTests.cs` - With no key, Development logs the email; anywhere else it throws and never logs the token.
 
+### Step 78: Environment review fixes
+
+**Assessment:** Functional 1.a.i (role on sign-up); Considerations (security, production-ready code).
+
+**Why:** A review of Step 77 found four gaps. Development still had the production health check and page counter
+URLs, so every local run pinged production's health check and counted as a production visit. With sign-up limited to
+Applicant there was no way at all to get a Property Manager in Production. The only role button wasn't selected, so
+applicants had to click their one choice or get "Please select a valid role". A comment still said the server checks
+against AppRoles.All.
+
+**Files:**
+
+- **M** `appsettings.Development.json` - Telemetry URLs emptied (set them in user secrets to try telemetry locally). Production keeps its values.
+- **A** `Data/ManagerBootstrapper.cs`, **M** `Program.cs`, **M** `appsettings.json` - Bootstrap:ManagerEmail. On startup, in any environment, that account becomes a Property Manager and stops being an Applicant, but only once its email is confirmed, so nobody can claim the role by registering the address first. It does nothing once the account is a manager.
+- **M** `Areas/Identity/Pages/Account/Register.cshtml.cs` - When Applicant is the only choice, the GET selects it.
+- **M** `Areas/Identity/Pages/Account/Register.cshtml` - The comment.
+- **M** `README.md` - Telemetry is Production-only by default; how to make the first Property Manager.
+- **A** `Tests/.../TestWebHostEnvironment.cs`, **M** `RegisterConfirmationTests.cs, EmailSenderTests.cs` - One shared fake environment instead of a copy per test class.
+- **A** `Tests/.../Controllers/RegisterTests.cs` - Roles per environment (Development, Production, Staging) and the preselection.
+- **A** `Tests/.../Data/ManagerBootstrapperTests.cs` - A confirmed applicant becomes manager only; an existing manager, an unconfirmed account, no setting and an unknown email change nothing.
+- **M** `Tests/.../UITests/Infrastructure/UiFixture.cs`, **A** `Tests/.../UITests/Tests/StagingEnvironmentTests.cs` - A Staging fixture with ShowConfirmationLink and the counter switched on: sign-up is Applicant only and preselected, no confirmation link, no demo data, no counter.
+- **M** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs` - No connection string stops startup with a clear error.
+
