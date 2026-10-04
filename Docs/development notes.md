@@ -1072,3 +1072,22 @@ shape the EF model, and MigrateAsync refuses a model that doesn't match the migr
 **Known issue:** Outside Development, running from the build output rather than a publish (the Production launch
 profile, and the Production/Staging UI tests), static web assets aren't enabled, so the scoped CSS bundle and the
 Identity UI's validation scripts return 500. Published output isn't affected. The UI tests pass without them.
+
+### Step 80: Serve static web assets outside Development
+
+**Assessment:** Considerations (production-ready code); Technical 2.c (tests).
+
+**Why:** Step 79's known issue. The scoped CSS bundle and the Identity UI's files aren't in wwwroot until the app is
+published; when it runs from the build output, a manifest says where they are, and ASP.NET Core only reads that
+manifest in Development. So Production or Staging run locally (the Production launch profile, the UI test fixtures)
+answered 500 for `Troy Web Property Manager.styles.css` and for `/Identity/lib/jquery-validation/...`. Outside
+Development the Identity pages load jQuery Validation from cdnjs and only fall back to `/Identity/lib` if the CDN copy
+doesn't load, so the broken fallback only showed when the CDN was unreachable, but then those pages had no client-side
+validation. Server-side validation was never affected.
+
+**Files:**
+
+- **M** `Program.cs` - Calls UseStaticWebAssets outside Development (Development already does). A published app has no runtime manifest, so it does nothing there: checked by publishing, running the published app as Production against a freshly migrated LocalDB database, and getting 200 for every stylesheet and script on Register, the scoped CSS and both `/Identity/lib` fallbacks, with no errors logged.
+- **M** `Tests/.../UITests/Infrastructure/UiFixture.cs` - BrokenAssetsAsync: loads a page, requests every local stylesheet and script it references, including the local fallbacks written in with document.write for CDN scripts, and lists any that don't answer 200.
+- **M** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs, StagingEnvironmentTests.cs` - Home, Register, Login, Forgot password and Resend confirmation: everything loads. Before the fix all ten failed (the scoped CSS everywhere, plus both Identity fallbacks on the Identity UI pages).
+- **M** `README.md` - Drops the known-issue note from Production setup.

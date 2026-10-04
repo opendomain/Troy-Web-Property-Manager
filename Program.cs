@@ -19,6 +19,13 @@ namespace Troy_Web_Property_Manager
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            // The scoped CSS bundle and the Identity UI's files aren't in wwwroot until the app is published; when it
+            // runs from the build output, a manifest says where they are. ASP.NET only reads that manifest in
+            // Development, so Production or Staging run locally (or in the UI tests) would answer 500 for them.
+            // A published app has no manifest, so this does nothing there.
+            if (!builder.Environment.IsDevelopment())
+                builder.WebHost.UseStaticWebAssets();
+
             // Add services to the container.
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
             if (string.IsNullOrWhiteSpace(connectionString))
