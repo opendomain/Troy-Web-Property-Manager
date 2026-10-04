@@ -28,11 +28,23 @@ namespace Troy_Web_Property_Manager.Services
         private readonly SendGridClient? _client;
 
         public EmailSender(IOptions<SendGridOptions> options, ILogger<EmailSender> logger, IHostEnvironment environment)
+            : this(options, logger, environment, httpClient: null)
+        {
+        }
+
+        /// <summary>
+        /// For tests: SendGrid's requests go through <paramref name="httpClient"/>, so they can answer without the network.
+        /// Internal, so DI only ever sees the public constructor.
+        /// </summary>
+        internal EmailSender(IOptions<SendGridOptions> options, ILogger<EmailSender> logger, IHostEnvironment environment, HttpClient? httpClient)
         {
             _options = options.Value;
             _logger = logger;
             _environment = environment;
-            _client = string.IsNullOrWhiteSpace(_options.ApiKey) ? null : new SendGridClient(_options.ApiKey);
+            if (!string.IsNullOrWhiteSpace(_options.ApiKey))
+            {
+                _client = httpClient is null ? new SendGridClient(_options.ApiKey) : new SendGridClient(httpClient, _options.ApiKey);
+            }
         }
 
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)

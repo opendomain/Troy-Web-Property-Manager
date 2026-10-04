@@ -199,14 +199,29 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     /// The app with the GoatCounter page counter switched on. The URL is a reserved .invalid name, and the tests only
     /// read the HTML (no browser runs the script), so nothing is ever counted.
     /// </summary>
-    public sealed class TelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: GoatCounterUrl, environment: "Production"))
+    /// <remarks>The startup ping is on too, sent to a <see cref="StartupPingCatcher"/> on this machine.</remarks>
+    public sealed class TelemetryUiFixture : UiFixture
     {
         public const string GoatCounterUrl = "https://uitest.invalid/count";
+
+        public TelemetryUiFixture() : this(new StartupPingCatcher())
+        {
+        }
+
+        private TelemetryUiFixture(StartupPingCatcher startupPing)
+            : base(new AppFactory(goatCounterUrl: GoatCounterUrl, environment: "Production", startupPingUrl: startupPing.Url))
+        {
+            StartupPing = startupPing;
+        }
+
+        public StartupPingCatcher StartupPing { get; }
     }
 
     public sealed class ProductionUiFixture() : UiFixture(new AppFactory(showConfirmationLink: true, environment: "Production")) { }
     public sealed class ProductionNoEmailUiFixture() : UiFixture(new AppFactory(sendGridApiKey: "", showConfirmationLink: true, environment: "Production")) { }
-    public sealed class DevelopmentTelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: TelemetryUiFixture.GoatCounterUrl)) { }
+    /// <summary>Telemetry on in Development, with a startup ping URL that nothing answers, so the ping fails.</summary>
+    public sealed class DevelopmentTelemetryUiFixture() : UiFixture(new AppFactory(goatCounterUrl: TelemetryUiFixture.GoatCounterUrl,
+        startupPingUrl: StartupPingCatcher.UnreachableUrl())) { }
 
     /// <summary>
     /// Any environment that isn't Development should get Production's safeguards. Telemetry is on in config here, to

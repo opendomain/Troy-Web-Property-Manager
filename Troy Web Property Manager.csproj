@@ -23,6 +23,11 @@
     <PackageReference Include="SendGrid" Version="9.29.3" />
   </ItemGroup>
 
+  <!-- Lets the unit tests use test-only seams, such as EmailSender's HttpClient constructor. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Troy Web Property Manager.Tests" />
+  </ItemGroup>
+
   <!-- The test project lives below this folder; keep its files out of the web project. -->
   <ItemGroup>
     <Compile Remove="Tests\**" />

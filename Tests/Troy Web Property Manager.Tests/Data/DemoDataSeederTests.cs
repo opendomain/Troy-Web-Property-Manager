@@ -89,6 +89,28 @@ namespace Troy_Web_Property_Manager.Tests.Data
         }
 
         [Fact]
+        public async Task Seed_DemoAccountIdentityRefuses_FailsWithTheReasonAndSavesNothing()
+        {
+            // A user already has the demo username under another email, so creating the demo account fails.
+            using (var db = _db.CreateContext())
+            {
+                db.Users.Add(new IdentityUser
+                {
+                    UserName = "manager1@example.com",
+                    NormalizedUserName = "MANAGER1@EXAMPLE.COM",
+                    Email = "someone-else@example.com",
+                    NormalizedEmail = "SOMEONE-ELSE@EXAMPLE.COM"
+                });
+                db.SaveChanges();
+            }
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => SeedAsync(_db));
+
+            Assert.Contains("Couldn't seed demo user manager1@example.com", ex.Message);
+            Assert.Empty(_db.CreateContext().Properties);
+        }
+
+        [Fact]
         public async Task Seed_IsTheSameEveryTime()
         {
             using var other = new TestDatabase(withSampleData: false);

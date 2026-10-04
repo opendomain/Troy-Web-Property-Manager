@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Troy_Web_Property_Manager.Rules;
 using Troy_Web_Property_Manager.ViewModels;
 
@@ -74,6 +75,24 @@ namespace Troy_Web_Property_Manager.Tests.Rules
 
             Assert.Equal(nameof(ResidenceViewModel.Address), error.Field);
             Assert.True(error.PreventsSave);
+        }
+
+        /// <summary>A section whose object-level rule isn't tied to a field and has no message.</summary>
+        private sealed class SectionWithAGeneralRule : IValidatableObject
+        {
+            public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+            {
+                yield return new ValidationResult(null);
+            }
+        }
+
+        [Fact]
+        public void RuleWithNoField_GoesInTheGeneralErrors()
+        {
+            var error = Assert.Single(SectionValidator.Validate(new SectionWithAGeneralRule(), prefix: "Section."));
+
+            Assert.Equal("", error.Field);
+            Assert.Equal("", error.Message);
         }
     }
 }

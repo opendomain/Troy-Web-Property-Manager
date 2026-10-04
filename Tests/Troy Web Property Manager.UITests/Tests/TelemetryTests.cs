@@ -51,5 +51,14 @@ namespace Troy_Web_Property_Manager.UITests.Tests
             Assert.DoesNotContain(CounterScript, html);
             Assert.DoesNotContain("data-goatcounter", html);
         }
+
+        [Fact]
+        public async Task StartupPing_IsPostedOnStart_WithTheEnvironment()
+        {
+            var request = await app.StartupPing.Request.WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.StartsWith("POST /ping HTTP/1.1", request);
+            Assert.EndsWith("env=Production", request);
+        }
     }
 }
