@@ -9,23 +9,23 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
 {
     /// <summary>
     /// Hosts the real app for the browser: the same Program.cs, served over Kestrel on a free local port (a browser
-    /// can't reach the in-memory TestServer), in the Development environment so the demo data gets seeded.
+    /// can't reach the in-memory TestServer). Defaults to Development; environment tests also exercise Production.
     /// </summary>
     /// <remarks>
     /// <para>Three things are swapped for tests:</para>
     /// <list type="bullet">
     ///   <item>The database: a new LocalDB database per test run (<see cref="DatabaseName"/>), created, migrated and
-    ///   seeded by Program's startup code, and dropped by <see cref="UiFixture"/> at the end. Your development
+    ///   seeded by Program in Development or migrated by the Production fixture, and dropped by <see cref="UiFixture"/> at the end. Your development
     ///   database is never touched - the fixture checks the connection before any test runs.</item>
     ///   <item>Email: <see cref="CapturingEmailSender"/> keeps the messages in memory, so registration tests can
     ///   follow the confirmation link, and nothing is ever sent through SendGrid (even with a key in user secrets).</item>
     ///   <item>SendGrid:ApiKey is set to <see cref="SendGridApiKey"/> - a dummy value by default. Register only calls
-    ///   the email sender when a key is configured (with none it shows the link on the page instead), so the key has
+    ///   the email sender when a key is configured (with none it shows a link only in Development), so the key has
     ///   to look set for the capturing sender to see anything. It replaces any real key from user secrets, so even if
     ///   something resolved the real sender, SendGrid would refuse it. Pass "" to run the app with no key at all
     ///   (see <see cref="NoSendGridKeyUiFixture"/>).</item>
     ///   <item>Registration:ShowConfirmationLink is set to <see cref="ShowConfirmationLink"/> - off by default, so
-    ///   the confirmation page only shows the link when the email fails (see <see cref="ShowConfirmationLinkUiFixture"/>
+    ///   the Development confirmation page only shows the link when email fails (see <see cref="ShowConfirmationLinkUiFixture"/>
     ///   for the app with it on).</item>
     ///   <item>Telemetry: the startup ping is always off, and so is the GoatCounter page counter unless
     ///   <see cref="GoatCounterUrl"/> is given (see <see cref="TelemetryUiFixture"/>). Test runs shouldn't count as
@@ -33,7 +33,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
     /// </list>
     /// </remarks>
     public sealed class AppFactory(string sendGridApiKey = "uitest-not-a-real-key", bool showConfirmationLink = false,
-        string goatCounterUrl = "")
+        string goatCounterUrl = "", string environment = "Development")
         : WebApplicationFactory<Program>
     {
         public string SendGridApiKey { get; } = sendGridApiKey;
@@ -41,6 +41,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
         public bool ShowConfirmationLink { get; } = showConfirmationLink;
 
         public string GoatCounterUrl { get; } = goatCounterUrl;
+        public string EnvironmentName { get; } = environment;
 
         public string DatabaseName { get; } = $"TroyWebPM_UITests_{Guid.NewGuid():N}";
 
@@ -51,7 +52,7 @@ namespace Troy_Web_Property_Manager.UITests.Infrastructure
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
-            builder.UseEnvironment("Development");
+            builder.UseEnvironment(EnvironmentName);
             builder.UseSetting("ConnectionStrings:DefaultConnection", ConnectionString);
             builder.UseSetting("SendGrid:ApiKey", SendGridApiKey);
             builder.UseSetting("Registration:ShowConfirmationLink", ShowConfirmationLink.ToString());

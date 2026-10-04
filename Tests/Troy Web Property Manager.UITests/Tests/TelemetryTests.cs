@@ -32,6 +32,7 @@ namespace Troy_Web_Property_Manager.UITests.Tests
 
             Assert.Contains(CounterScript, html);
             Assert.Contains($"data-goatcounter=\"{TelemetryUiFixture.GoatCounterUrl}\"", html);
+            Assert.DoesNotContain("allow_local", html);
         }
 
         [Theory]

@@ -27,9 +27,9 @@ Then open https://localhost:7066, or http://localhost:5140 with `--launch-profil
 
 If the browser doesn't trust the HTTPS development certificate, run `dotnet dev-certs https --trust` once.
 
-**No manual database setup is needed.** On startup the app:
+**No manual database setup is needed in Development.** On startup the app:
 
-1. Creates the database (`Troy_Web_Property_Manager_DB` on `(localdb)\mssqllocaldb`) if it doesn't exist, and applies any pending migrations.
+1. In **Development only**, creates the database (`Troy_Web_Property_Manager_DB` on `(localdb)\mssqllocaldb`) if it doesn't exist, and applies pending migrations. Other environments require migrations to be applied before startup.
 2. Seeds the lookup tables (application statuses and unit types). This runs in every environment.
 3. In **Development only**, fills an empty database with demo data: properties, units, applicants, and applications in every status.
 
@@ -50,11 +50,30 @@ dotnet ef database drop --project "Troy Web Property Manager.csproj"
 
 ## Configuration
 
-Settings are in `appsettings.json`. Keep secrets out of it: use [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) in development (the project already has a `UserSecretsId`) and environment variables in production.
+Shared settings in `appsettings.json` use safe defaults. `appsettings.Development.json` enables LocalDB, detailed diagnostics and on-page confirmation links; `appsettings.Production.json` keeps those shortcuts off. Both environments configure the startup ping and GoatCounter telemetry. Development enables GoatCounter's localhost support. Identity pages exclude the page counter in both environments. Set a telemetry URL to an empty string to disable that integration. Keep secrets out of these files: use [user secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) in Development (the project already has a `UserSecretsId`) and environment variables in Production.
+
+The `http` and `https` launch profiles select Development. The `Production` profile selects Production; without a launch profile or an environment setting, ASP.NET Core defaults to Production. Set `DOTNET_ENVIRONMENT` and `ASPNETCORE_ENVIRONMENT` consistently when configuring a host.
+
+### Production setup
+
+Production requires an explicit SQL Server connection string and real email delivery. For example, in PowerShell:
+
+```powershell
+$env:DOTNET_ENVIRONMENT = "Production"
+$env:ASPNETCORE_ENVIRONMENT = "Production"
+$env:ConnectionStrings__DefaultConnection = "<production-sql-server-connection-string>"
+$env:SendGrid__ApiKey = "<your-sendgrid-api-key>"
+$env:SendGrid__FromEmail = "<verified-sender@your-domain>"
+$env:SendGrid__FromName = "Property Manager"
+dotnet ef database update --project "Troy Web Property Manager.csproj"
+dotnet run --launch-profile Production
+```
+
+Use your hosting platform's secret configuration for deployment. Apply migrations as a deployment step before starting the app; startup refuses a database with pending migrations outside Development. Roles and lookup data are still initialized in every environment. Demo accounts and properties are never seeded outside Development. Public registration creates applicants only outside Development; provision managers through a trusted administrative process using Identity's Property Manager role.
 
 ### Connection string
 
-The default is LocalDB. To use a different SQL Server:
+Development defaults to LocalDB. Production has no default connection string. To use a different SQL Server in Development:
 
 ```sh
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=.;Database=Troy_Web_Property_Manager_DB;Trusted_Connection=True;TrustServerCertificate=True;MultipleActiveResultSets=true"
@@ -70,7 +89,7 @@ The account needs permission to create the database, or the database must alread
 
 New accounts must confirm their email address before they can log in, so the app sends a confirmation email.
 
-- **Without a SendGrid key the app still runs.** In Development the confirmation email is written to the log (the console) instead, so you can copy the link from there. Outside Development a missing key is an error.
+- **Without a SendGrid key the app still runs.** Development registration offers an on-page confirmation link; other Identity emails are written to the log (the console) for local testing. Outside Development a missing key causes delivery to fail and accounts remain unconfirmed.
 - **To send real email**, set up a SendGrid account, verified sender and API key (see `Docs/Email Setup.txt`), then:
 
 ```sh
@@ -79,13 +98,13 @@ dotnet user-secrets set "SendGrid:FromEmail" "<verified-sender@your-domain>"
 dotnet user-secrets set "SendGrid:FromName" "Property Manager"
 ```
 
-**If the email can't be sent or doesn't arrive**, sign-up still works. When sending fails (or there's no key), the "Register confirmation" page shows a **Confirm your account** button instead.
-
-SendGrid can also accept an email that then lands in spam or never arrives, and the app can't detect that. So with `Registration:ShowConfirmationLink` set to `true` (the default in `appsettings.json`), the page shows the button even after the email was sent. That skips real email verification, so turn it off for a real deployment:
+**In Development**, failed delivery (including a missing key) shows a **Confirm your account** button. `Registration:ShowConfirmationLink` defaults to `true` in Development, so the page also shows the button after a successful send. To exercise the normal inbox flow in Development:
 
 ```sh
 dotnet user-secrets set "Registration:ShowConfirmationLink" "false"
 ```
+
+**Outside Development**, the page never exposes a confirmation token or direct confirmation link, even if `Registration:ShowConfirmationLink` is accidentally enabled. A delivery failure leaves the account unconfirmed, blocks login, and offers a resend link. Confirmation must come from the emailed link; there is no delivery-failure bypass.
 
 ## Running the tests
 
@@ -108,7 +127,7 @@ dotnet test "Tests/Troy Web Property Manager.UITests"
 These tests (xUnit + Selenium WebDriver, headless Chrome) drive the real app in a browser. They cover every requirement and bonus item in the assessment, for both roles, including security (wrong role, other people's applications, tampered posts, missing antiforgery tokens) and the error cases.
 
 - **Needs:** Google Chrome and SQL Server LocalDB. Selenium Manager downloads the matching ChromeDriver on first run, so the first run needs internet access.
-- **What it does:** it starts the app in-process (`WebApplicationFactory` over Kestrel on a free port) against a new LocalDB database. Program.cs creates, migrates and seeds that database like a real first run, and it's dropped at the end. The tests check they're connected to that throwaway database before running, so your development database is never touched. Emails are captured in memory (registration tests follow the confirmation link), so nothing goes to SendGrid.
+- **What it does:** it starts the app in-process (`WebApplicationFactory` over Kestrel on a free port) against new LocalDB databases. Development fixtures let Program.cs migrate and seed; Production fixtures deploy migrations before starting. The databases are dropped at the end. The tests check they're connected to the throwaway database before running, so your development database is never touched. Emails are captured in memory (registration tests follow the confirmation link), so nothing goes to SendGrid.
 - **How long:** a few minutes. The tests share one running app and run one at a time, each in its own browser.
 - **When one fails:** the error says what it was waiting for and where the browser was. A screenshot and the page source are saved under the test output folder, in `UiTestArtifacts`.
 - **Run a subset:** use a filter, e.g. `--filter "FullyQualifiedName~SecurityTests"`.
@@ -143,13 +162,13 @@ Details are in `Docs/Bonus-ApplicationGrid.md`.
 
 ## Database migrations
 
-The schema is code-first (`Data/Migrations`), and migrations are applied automatically on startup, so `dotnet ef database update` isn't needed. To change the model, edit the entities or `ApplicationDbContext`, then add a migration:
+The schema is code-first (`Data/Migrations`). Development applies migrations automatically on startup; Production requires `dotnet ef database update` as a deployment step. To change the model, edit the entities or `ApplicationDbContext`, then add a migration:
 
 ```sh
 dotnet ef migrations add <MigrationName> --project "Troy Web Property Manager.csproj"
 ```
 
-The next run applies it.
+The next Development run applies it. Deploy it explicitly before the next Production run.
 
 ## Project layout
 
@@ -165,5 +184,5 @@ The next run applies it.
 
 ## Security notes
 
-- Sign-up lets you pick your own role, including Property Manager, because the assessment asks for a role picker (1.a.i). Managers can see every applicant's details, so a real deployment should invite or approve managers instead of letting anyone choose that role.
+- Development sign-up lets you pick your own role, including Property Manager, because the assessment asks for a role picker (1.a.i). Outside Development, both the form and server validation restrict public registration to Applicant.
 - The demo accounts share a known password, which is why they are only seeded in Development.

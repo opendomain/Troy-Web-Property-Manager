@@ -30,7 +30,7 @@
             @* I added the role picker here. The server still checks the value against AppRoles.All. *@
             <fieldset class="form-group mt-2">
                 <legend class="col-form-label pt-0">@Html.DisplayNameFor(m => m.Input.Role)</legend>
-                @foreach (var role in AppRoles.All)
+                @foreach (var role in Model.RegistrationRoles)
                 {
                     var id = "role-" + role.Replace(" ", "");
                     <div class="form-check">

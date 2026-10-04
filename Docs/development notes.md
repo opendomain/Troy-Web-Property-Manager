@@ -972,3 +972,54 @@ an applicant added to a new draft could read them before the starter had shared 
 - **M** `Services/ApplicationService.cs` - GetEditorAsync pre-fills an unsaved section 1 only when the viewer is the starter; anyone else sees it empty. Once it's saved on the application, everyone sees the saved copy as before.
 - **M** `Tests/.../Services/MultipleApplicantsTests.cs` - The starter gets the pre-fill, an added applicant doesn't, and both see section 1 once it's saved.
 - **M** `Docs/Bonus-MultipleApplicants.md`
+
+### Step 76: Applicant remove race condition
+
+**Assessment:** Bonus 5 (multiple applicants); Considerations (security, concurrency).
+
+**Why:** Every application write checks that the user is on the application, then saves. If the starter removed an
+applicant between those two moments, the removed applicant's request had already passed the check and could still
+save section 1, residences, a submit or a withdraw on an application they no longer had access to.
+
+**Files:**
+
+- **M** `Models/RentalApplication.cs`, **M** `Data/ApplicationDbContext.cs` - ApplicantAccessVersion, a GUID used as a concurrency token on the application row.
+- **A** `Data/Migrations/20261003223033_ApplicantAccessConcurrency.cs (+ .Designer.cs)`, **M** `ApplicationDbContextModelSnapshot.cs` - Adds the column.
+- **M** `Services/ApplicationService.cs` - RemoveApplicantAsync sets a new ApplicantAccessVersion in the same save that removes the membership. GuardStatus already makes every write update the application row, so that update now also fails when access was revoked after the check. The write gets the usual "reload and try again" conflict, and its section version swaps and child changes roll back with it.
+- **M** `Tests/.../Services/MultipleApplicantsTests.cs` - For each write (section 1, history, add/edit/delete residence, submit, add/remove applicant, withdraw): an applicant removed after the ownership check gets a conflict, and nothing on the application changes except the access version.
+
+## Phase 12: Separate Development and Production
+
+Until now every environment behaved like a developer's machine: LocalDB was the default database, startup migrated
+whatever database it was pointed at, anyone could sign up as a Property Manager, and the registration page could show
+the confirmation link instead of making people use the email. This phase keeps all of that for Development (so a fresh
+clone still just works) and turns it off everywhere else. Each shortcut checks "is this Development?", never "is this
+Production?", so Staging or any other environment gets the safe behaviour.
+
+### Step 77: Separate Development and Production environments
+
+**Assessment:** Technical 2.a, 2.b; Considerations (production-ready code, security); Deliverables (README).
+
+**Why:** A deployed copy got Development's conveniences: a LocalDB connection string from appsettings.json, automatic
+migrations against the real database, Property Manager in the public role picker, an on-page confirmation link (even
+with `Registration:ShowConfirmationLink` left on by mistake), the OpenAPI document and the "Development Mode" text on
+the error page.
+
+**Files:**
+
+- **M** `appsettings.json` - Safe defaults only: no connection string, ShowConfirmationLink off, telemetry empty, DetailedErrors off.
+- **M** `appsettings.Development.json` - LocalDB, ShowConfirmationLink on.
+- **A** `appsettings.Production.json` - ShowConfirmationLink off; the startup ping and GoatCounter URLs.
+- **M** `Properties/launchSettings.json` - http/https set DOTNET_ENVIRONMENT as well; new Production profile.
+- **M** `Program.cs` - A missing connection string is a clear startup error. The database developer page, OpenAPI and automatic migrations are Development only; anywhere else startup refuses a database with pending migrations. The startup ping only runs in Development and Production.
+- **M** `Areas/Identity/Pages/Account/Register.cshtml, Register.cshtml.cs` - RegistrationRoles: both roles in Development, Applicant only elsewhere, for the radio buttons and for checking the post (so a tampered post can't pick Property Manager). The confirmation link only goes into TempData in Development.
+- **M** `Areas/Identity/Pages/Account/RegisterConfirmation.cshtml, .cshtml.cs` - Ignores any link outside Development. When the email couldn't be sent it says the account isn't confirmed and offers Resend confirmation email.
+- **M** `Pages/Error.cshtml` - The "Development Mode" instructions only show in Development.
+- **M** `Pages/Shared/_GoatCounter.cshtml` - Only in Development and Production; allow_local (count localhost) only in Development.
+- **M** `Services/EmailSender.cs, Data/ApplicationDbContext.cs, Docs/Bonus-*.md, Docs/Email Setup.txt, README.md` - Comments and docs: migrations are a deployment step outside Development, Production settings come from environment variables.
+- **M** `Tests/.../UITests/Infrastructure/AppFactory.cs, UiFixture.cs` - The app's environment is a parameter. Fixtures that aren't Development deploy the migrations before starting the app. New Production, Production-without-email and Development-telemetry fixtures; the telemetry fixture runs as Production.
+- **A** `Tests/.../UITests/Tests/ProductionEnvironmentTests.cs` - Registration needs the emailed link even with ShowConfirmationLink on (whether the send works or fails); Property Manager is rejected, tampered posts included; only roles and lookups are seeded; /openapi and /ApplyMigrations are 404; no developer text on /Error; undeployed migrations stop startup and create no database. No SendGrid key: no link and no login. Development telemetry: counter with allow_local, never on Identity pages.
+- **M** `Tests/.../UITests/Tests/TelemetryTests.cs` - No allow_local in Production.
+- **A** `Tests/.../Controllers/RegisterConfirmationTests.cs` - The link only shows in Development.
+- **A** `Tests/.../Services/EmailSenderTests.cs` - With no key, Development logs the email; anywhere else it throws and never logs the token.
+

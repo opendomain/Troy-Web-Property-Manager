@@ -72,7 +72,7 @@ No schema change, but `ApplicantInformationSaved` and `ResidenceHistorySaved` no
 
 ### Migration
 
-`Data/Migrations/20260930194904_AllowSectionsSavedWithErrors` drops `CK_Residence_Dates` and makes both date columns nullable. As with the other migrations, `Program.CreateDatabase` applies it automatically on startup. Existing rows already satisfy the old rules, so they keep working and show no errors.
+`Data/Migrations/20260930194904_AllowSectionsSavedWithErrors` drops `CK_Residence_Dates` and makes both date columns nullable. As with the other migrations, `Program.CreateDatabase` applies it automatically on Development startup (Production applies migrations during deployment). Existing rows already satisfy the old rules, so they keep working and show no errors.
 
 `Down` was hand-edited to fix rows that would break the old schema before restoring it:
 
@@ -92,7 +92,7 @@ It then makes the columns `NOT NULL` again and re-adds `CK_Residence_Dates`. Onl
 | `Models/Residence.cs` | `MoveInDate`/`MoveOutDate` are now `DateOnly?`. | A residence can be saved without its dates. |
 | `Models/ApplicantInformation.cs` | Doc comment only. | Explains that blanks are stored as `""`. |
 | `Data/ApplicationDbContext.cs` | Removed `CK_Residence_Dates` from the `Residence` mapping. | Code-first schema. |
-| `Data/Migrations/20260930194904_AllowSectionsSavedWithErrors.cs` (+ `.Designer.cs`), `ApplicationDbContextModelSnapshot.cs` | **New** migration and updated snapshot. `Down` hand-edited as described above. | Applies the schema change on startup. |
+| `Data/Migrations/20260930194904_AllowSectionsSavedWithErrors.cs` (+ `.Designer.cs`), `ApplicationDbContextModelSnapshot.cs` | **New** migration and updated snapshot. `Down` hand-edited as described above. | Applies the schema change on Development startup; deploy it explicitly in Production. |
 | `ViewModels/ApplicationEditorViewModel.cs` | Added `ApplicantInformationErrors`, `ResidenceHistoryErrors` (both `[BindNever]`) and `SectionHasErrors(section)`. | Carries the saved errors to the page, and tells it when to offer Next. |
 | `ViewModels/ResidenceViewModel.cs` | Added `Errors` and `SavedWithErrors` (both `[BindNever]`). Updated the remarks. | Row errors in the table, and the "saved with errors" state of the modal. |
 | `ViewModels/ApplicantInformationViewModel.cs` | Doc comment only. | Describes the new save flow. |

@@ -3,10 +3,24 @@
 3. Verify domain (4dc.com) - setup DNS
 4. Create Sender
 5. Create API key
-6. setup keys for environment to use
+6. Set keys using user secrets in Development:
 
 dotnet user-secrets set "SendGrid:ApiKey" "<your-sendgrid-api-key>"
 dotnet user-secrets set "SendGrid:FromEmail" "test01@4dc.com"
 dotnet user-secrets set "SendGrid:FromName" "Property Manager"
 
-5. Test
+7. For Production, use the host's secret configuration or environment variables:
+
+SendGrid__ApiKey=<your-sendgrid-api-key>
+SendGrid__FromEmail=<verified-sender@your-domain>
+SendGrid__FromName=Property Manager
+ConnectionStrings__DefaultConnection=<production-sql-server-connection-string>
+DOTNET_ENVIRONMENT=Production
+ASPNETCORE_ENVIRONMENT=Production
+
+Apply database migrations before starting Production. Production never exposes direct
+confirmation links, even if Registration:ShowConfirmationLink is enabled. Failed email
+delivery leaves the account unconfirmed and login blocked; users can resend confirmation.
+Development retains the on-page confirmation button for local testing.
+
+8. Test

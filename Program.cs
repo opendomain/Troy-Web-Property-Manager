@@ -20,10 +20,13 @@ namespace Troy_Web_Property_Manager
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new InvalidOperationException("Configure ConnectionStrings:DefaultConnection for this environment.");
             builder.Services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(connectionString));
-            builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+            if (builder.Environment.IsDevelopment())
+                builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
             // ASP.NET Identity handles users and roles (Technical 2.a). The default Identity UI gives us sign-up,
             // log-in and log-out for free (1.a). I scaffolded Register into Areas/Identity so it can ask for a role (1.a.i).
@@ -80,41 +83,44 @@ namespace Troy_Web_Property_Manager
             // OpenAPI document for the JSON API, served at /openapi/v1.json in Development. It's built from the API
             // controllers' routes, [ProducesResponseType]s and XML doc comments (GenerateDocumentationFile in the
             // .csproj). The MVC pages use conventional routing, so they stay out of it.
-            builder.Services.AddOpenApi(options => options.AddOperationTransformer((operation, context, cancellationToken) =>
+            if (builder.Environment.IsDevelopment())
             {
-                foreach (var (code, response) in operation.Responses ?? [])
+                builder.Services.AddOpenApi(options => options.AddOperationTransformer((operation, context, cancellationToken) =>
                 {
-                    if (response.Content is null) continue;
-                    // 401 and 403 come from the cookie handler (ApiStatusOr) with no body, whatever MVC would send.
-                    if (code is "401" or "403") response.Content.Clear();
-                    // [Produces] adds an application/json entry with no schema next to a 400's problem+json.
-                    foreach (var type in response.Content.Where(c => c.Value.Schema is null).Select(c => c.Key).ToList())
+                    foreach (var (code, response) in operation.Responses ?? [])
                     {
-                        response.Content.Remove(type);
+                        if (response.Content is null) continue;
+                        // 401 and 403 come from the cookie handler (ApiStatusOr) with no body, whatever MVC would send.
+                        if (code is "401" or "403") response.Content.Clear();
+                        // [Produces] adds an application/json entry with no schema next to a 400's problem+json.
+                        foreach (var type in response.Content.Where(c => c.Value.Schema is null).Select(c => c.Key).ToList())
+                        {
+                            response.Content.Remove(type);
+                        }
                     }
-                }
-                return Task.CompletedTask;
-            }).AddDocumentTransformer((document, context, cancellationToken) =>
-            {
-                document.Info.Title = "Troy Web Property Manager API";
-                document.Info.Description =
-                    "JSON endpoints behind the site's data grids. Sign in on the site first: the API uses the same " +
-                    "ASP.NET Core Identity cookie, and answers 401 without it.";
-
-                const string cookieScheme = "IdentityCookie";
-                document.Components ??= new OpenApiComponents();
-                document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
-                document.Components.SecuritySchemes[cookieScheme] = new OpenApiSecurityScheme
+                    return Task.CompletedTask;
+                }).AddDocumentTransformer((document, context, cancellationToken) =>
                 {
-                    Type = SecuritySchemeType.ApiKey,
-                    In = ParameterLocation.Cookie,
-                    // The cookie handler's default name: ".AspNetCore.Identity.Application".
-                    Name = CookieAuthenticationDefaults.CookiePrefix + IdentityConstants.ApplicationScheme,
-                    Description = "The cookie set when you sign in on the site."
-                };
-                document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference(cookieScheme, document)] = [] }];
-                return Task.CompletedTask;
-            }));
+                    document.Info.Title = "Troy Web Property Manager API";
+                    document.Info.Description =
+                        "JSON endpoints behind the site's data grids. Sign in on the site first: the API uses the same " +
+                        "ASP.NET Core Identity cookie, and answers 401 without it.";
+
+                    const string cookieScheme = "IdentityCookie";
+                    document.Components ??= new OpenApiComponents();
+                    document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+                    document.Components.SecuritySchemes[cookieScheme] = new OpenApiSecurityScheme
+                    {
+                        Type = SecuritySchemeType.ApiKey,
+                        In = ParameterLocation.Cookie,
+                        // The cookie handler's default name: ".AspNetCore.Identity.Application".
+                        Name = CookieAuthenticationDefaults.CookiePrefix + IdentityConstants.ApplicationScheme,
+                        Description = "The cookie set when you sign in on the site."
+                    };
+                    document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference(cookieScheme, document)] = [] }];
+                    return Task.CompletedTask;
+                }));
+            }
             // "Now" and "today" in the business's time zone (BusinessTimeZone in appsettings), not the server's.
             builder.Services.AddSingleton(BusinessClock.FromConfiguration(builder.Configuration));
             // Scoped = one per request, sharing that request's DbContext (also scoped).
@@ -155,7 +161,7 @@ namespace Troy_Web_Property_Manager
                 app.MapOpenApi();
             }
 
-            // Ensure the database is created and apply any pending migrations
+            // Validate the deployed schema; Development also applies pending migrations.
             await CreateDatabase(app);
 
             serverSideTelemetry(app);
@@ -166,7 +172,7 @@ namespace Troy_Web_Property_Manager
         private static void serverSideTelemetry(WebApplication app)
         {
             var pingUrl = app.Configuration["Telemetry:StartupPingUrl"];
-            if (string.IsNullOrWhiteSpace(pingUrl))
+            if ((!app.Environment.IsProduction() && !app.Environment.IsDevelopment()) || string.IsNullOrWhiteSpace(pingUrl))
             {
                 return;
             }
@@ -198,22 +204,21 @@ namespace Troy_Web_Property_Manager
         }
 
         /// <summary>
-        /// Runs on startup (Technical 2.b): creates the database and applies migrations (2.b.i), then seeds it (2.b.ii).
-        /// Each step checks what's already there, so it's fine to run every time - and a fresh clone just works with
-        /// no manual database setup.
+        /// Development creates and migrates the local database (Technical 2.b.i). Other environments require a
+        /// deployed schema. Required roles/lookups are seeded everywhere; demo data only in Development (2.b.ii).
         /// </summary>
         private static async Task CreateDatabase(WebApplication app)
         {
-            // NOTE: use this method instead of "dotnet ef database update" command
-
             using (var scope = app.Services.CreateScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                // Applies any pending migrations and creates the database if it doesn't exist
+                // Development manages its local schema. Production migrations are a deployment step.
                 var pending = (await dbContext.Database.GetPendingMigrationsAsync()).ToList();
-                await dbContext.Database.MigrateAsync();
-                //dbContext.Database.EnsureCreated();
+                if (app.Environment.IsDevelopment())
+                    await dbContext.Database.MigrateAsync();
+                else if (pending.Count > 0)
+                    throw new InvalidOperationException("The database has pending migrations. Apply them with dotnet ef database update before starting outside Development.");
                 if (pending.Count > 0)
                 {
                     app.Logger.LogInformation("Applied {Count} database migrations: {Migrations}.", pending.Count, string.Join(", ", pending));
