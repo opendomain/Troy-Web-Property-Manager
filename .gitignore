@@ -19,3 +19,6 @@ coverage*/
 [Rr]elease/
 publish/
 *.log
+
+# Serilog's rolling log files
+[Ll]ogs/

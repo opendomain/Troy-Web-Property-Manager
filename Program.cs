@@ -6,10 +6,12 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
+using Serilog;
 using Troy_Web_Property_Manager.Areas.Identity;
 using Troy_Web_Property_Manager.Data;
 using Troy_Web_Property_Manager.Models;
 using Troy_Web_Property_Manager.Services;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Troy_Web_Property_Manager
 {
@@ -25,6 +27,19 @@ namespace Troy_Web_Property_Manager
             // A published app has no manifest, so this does nothing there.
             if (!builder.Environment.IsDevelopment())
                 builder.WebHost.UseStaticWebAssets();
+
+            // Serilog replaces the default logging providers. Levels come from the "Serilog" section of appsettings;
+            // logs go to the console and to one file per day in Logs/ under the content root (not the working directory,
+            // which isn't the app's folder under IIS). Two weeks of files are kept.
+            builder.Services.AddSerilog((services, logger) => logger
+                .ReadFrom.Configuration(builder.Configuration)
+                .ReadFrom.Services(services)
+                .Enrich.FromLogContext()
+                .WriteTo.Console()
+                .WriteTo.File(Path.Combine(builder.Environment.ContentRootPath, "Logs", "log-.txt"),
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 14,
+                    shared: true));
 
             // Add services to the container.
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -144,6 +159,9 @@ namespace Troy_Web_Property_Manager
             }
 
             app.UseHttpsRedirection();
+
+            // One log line per request (method, path, status, time) instead of ASP.NET's several.
+            app.UseSerilogRequestLogging();
 
             app.UseRouting();
 
